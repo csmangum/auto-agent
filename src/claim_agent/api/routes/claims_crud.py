@@ -4,6 +4,7 @@ import asyncio
 from typing import Any, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from claim_agent.api.auth import AuthContext
@@ -31,7 +32,6 @@ from claim_agent.api.routes._claims_helpers import (
     PRIORITY_VALUES,
     adjuster_scope_params as _adjuster_scope_params,
     apply_adjuster_claim_filter as _apply_adjuster_claim_filter,
-    background_workflow_queue_full,
     get_claim_context,
     http_already_processing as _http_already_processing,
     process_claim_with_attachments as _process_claim_with_attachments,
@@ -332,15 +332,6 @@ async def create_claim(
         return cached
 
     try:
-        if async_mode:
-            if await background_workflow_queue_full():
-                release_idempotency_on_error(idem_key)
-                raise HTTPException(
-                    status_code=503,
-                    detail="Too many concurrent background tasks. Retry later.",
-                    headers={"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER},
-                )
-
         actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
         claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
             claim_input, None, actor_id, ctx=ctx,
@@ -351,10 +342,11 @@ async def create_claim(
                 claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
             )
             if task is None:
-                release_idempotency_on_error(idem_key)
-                raise HTTPException(
+                result = {"claim_id": claim_id}
+                store_response_if_idempotent(idem_key, 503, result)
+                return JSONResponse(
                     status_code=503,
-                    detail="Too many concurrent background tasks. Retry later.",
+                    content=result,
                     headers={"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER},
                 )
             result = {"claim_id": claim_id}

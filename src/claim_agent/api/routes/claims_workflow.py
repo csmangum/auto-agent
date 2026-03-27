@@ -4,7 +4,7 @@ import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import ValidationError
 
 from claim_agent.api.auth import AuthContext
@@ -24,7 +24,6 @@ from claim_agent.models.claim import ClaimInput
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
 from claim_agent.api.routes._claims_helpers import (
     BACKGROUND_QUEUE_FULL_RETRY_AFTER,
-    background_workflow_queue_full,
     get_claim_context,
     http_already_processing as _http_already_processing,
     process_claim_with_attachments as _process_claim_with_attachments,
@@ -58,15 +57,6 @@ async def process_claim(
         return cached
 
     try:
-        if async_mode:
-            if await background_workflow_queue_full():
-                release_idempotency_on_error(idem_key)
-                raise HTTPException(
-                    status_code=503,
-                    detail="Too many concurrent background tasks. Retry later.",
-                    headers={"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER},
-                )
-
         actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
         claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
             claim, files, actor_id, ctx=ctx,
@@ -77,10 +67,11 @@ async def process_claim(
                 claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
             )
             if task is None:
-                release_idempotency_on_error(idem_key)
-                raise HTTPException(
+                result = {"claim_id": claim_id}
+                store_response_if_idempotent(idem_key, 503, result)
+                return JSONResponse(
                     status_code=503,
-                    detail="Too many concurrent background tasks. Retry later.",
+                    content=result,
                     headers={"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER},
                 )
             result = {"claim_id": claim_id}
@@ -118,14 +109,6 @@ async def process_claim_async(
         return cached
 
     try:
-        if await background_workflow_queue_full():
-            release_idempotency_on_error(idem_key)
-            raise HTTPException(
-                status_code=503,
-                detail="Too many concurrent background tasks. Retry later.",
-                headers={"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER},
-            )
-
         actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
         claim_id, claim_data_with_attachments = await _process_claim_with_attachments(
             claim, files, actor_id, ctx=ctx,
@@ -134,10 +117,11 @@ async def process_claim_async(
             claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
         )
         if task is None:
-            release_idempotency_on_error(idem_key)
-            raise HTTPException(
+            result = {"claim_id": claim_id}
+            store_response_if_idempotent(idem_key, 503, result)
+            return JSONResponse(
                 status_code=503,
-                detail="Too many concurrent background tasks. Retry later.",
+                content=result,
                 headers={"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER},
             )
         result = {"claim_id": claim_id}

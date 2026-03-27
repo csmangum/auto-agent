@@ -145,7 +145,7 @@ class TestProcessClaim:
         assert resp.status_code == 200
 
     def test_capacity_exceeded_returns_503(self, client, mock_workflow, tmp_path, monkeypatch):
-        """When background task capacity is full, POST /claims/process?async=true returns 503."""
+        """When background task capacity is full, POST /claims/process?async=true returns 503 with claim_id."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.api.routes._claims_helpers as helpers_mod
         from claim_agent.config import get_settings
@@ -172,7 +172,7 @@ class TestProcessClaim:
             params={"async": "true"},
         )
         assert resp.status_code == 503
-        assert "Too many concurrent" in resp.json()["detail"]
+        assert "claim_id" in resp.json()
         assert resp.headers.get("Retry-After") == "60"
 
 
@@ -197,8 +197,8 @@ class TestProcessClaimAsync:
         assert "claim_id" in data
         assert data["claim_id"].startswith("CLM-")
 
-    def test_capacity_exceeded_does_not_create_claim(self, client, mock_workflow, tmp_path, monkeypatch):
-        """Returns 503 when at capacity and does NOT persist a new claim."""
+    def test_capacity_exceeded_creates_claim_but_returns_503(self, client, mock_workflow, tmp_path, monkeypatch):
+        """Returns 503 when at capacity; claim is created but workflow is not started, preventing orphans on retry."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.api.routes._claims_helpers as helpers_mod
         from claim_agent.config import get_settings
@@ -228,13 +228,28 @@ class TestProcessClaimAsync:
         resp = client.post(
             "/api/v1/claims/process/async",
             data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+            headers={"Idempotency-Key": "test-capacity-exceeded"},
         )
         assert resp.status_code == 503
         assert resp.headers.get("Retry-After") == "60"
+        assert "claim_id" in resp.json()
+        claim_id = resp.json()["claim_id"]
 
         with get_connection() as conn:
             count_after = conn.execute(text("SELECT COUNT(*) as c FROM claims")).fetchone()[0]
-        assert count_after == count_before, "No claim should be created when 503 is returned"
+        assert count_after == count_before + 1, "Claim should be created to prevent duplicates on retry"
+
+        retry_resp = client.post(
+            "/api/v1/claims/process/async",
+            data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
+            headers={"Idempotency-Key": "test-capacity-exceeded"},
+        )
+        assert retry_resp.status_code == 503
+        assert retry_resp.json()["claim_id"] == claim_id, "Retry should return same claim_id from cache"
+
+        with get_connection() as conn:
+            final_count = conn.execute(text("SELECT COUNT(*) as c FROM claims")).fetchone()[0]
+        assert final_count == count_after, "Retry should not create duplicate claim"
 
 
 # ---------------------------------------------------------------------------

@@ -194,8 +194,8 @@ def get_idempotency_key_and_cached(
 ) -> tuple[str | None, JSONResponse | None]:
     """Return (key, response). If response is not None, return it immediately.
 
-    Response can be: cached 200, 400 (invalid key), or 409 (request in progress).
-    Only 200 responses are cached; 4xx/5xx are not.
+    Response can be: cached 200 or 503, 400 (invalid key), or 409 (request in progress).
+    200 and 503 responses are cached; other 4xx/5xx are not.
     """
     raw = request.headers.get(IDEMPOTENCY_KEY_HEADER)
     key = _validate_key(raw) if raw else None
@@ -217,7 +217,8 @@ def get_idempotency_key_and_cached(
     if result == "owned":
         return scoped_key, None
     if result == "cached" and status is not None and body is not None:
-        return scoped_key, JSONResponse(status_code=status, content=body)
+        headers = {"Retry-After": "60"} if status == 503 else None
+        return scoped_key, JSONResponse(status_code=status, content=body, headers=headers)
     if result == "in_progress":
         return scoped_key, JSONResponse(
             status_code=409,
@@ -230,10 +231,10 @@ def get_idempotency_key_and_cached(
 def store_response_if_idempotent(
     key: str | None, status: int, body: dict[str, Any], db_path: str | None = None
 ) -> None:
-    """Store idempotency key with response when key was provided. Only caches 200."""
+    """Store idempotency key with response when key was provided. Caches 200 and 503."""
     if not key:
         return
-    if status == 200:
+    if status in (200, 503):
         _complete_claim(key, status, body, db_path)
     else:
         _release_claim(key, db_path)
