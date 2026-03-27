@@ -52,58 +52,8 @@ def client():
 # -------------------------------------------------------------------
 
 
-class TestClaimsStats:
-    def test_returns_stats(self, client):
-        resp = client.get("/api/v1/claims/stats")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["total_claims"] == 7
-        assert "by_status" in data
-        assert "by_type" in data
-        assert data["by_status"]["open"] == 1
-        assert data["by_status"]["closed"] == 1
-        assert data["by_status"]["fraud_suspected"] == 1
-        assert data["by_status"]["archived"] == 1
-        assert data["by_status"]["purged"] == 1
-
-
 class TestClaimsList:
-    def test_list_all(self, client):
-        resp = client.get("/api/v1/claims")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["total"] == 5
-        assert len(data["claims"]) == 5
-
-    def test_filter_by_status(self, client):
-        resp = client.get("/api/v1/claims?status=open")
-        data = resp.json()
-        assert data["total"] == 1
-        assert data["claims"][0]["id"] == "CLM-TEST001"
-
-    def test_filter_by_type(self, client):
-        resp = client.get("/api/v1/claims?claim_type=fraud")
-        data = resp.json()
-        assert data["total"] == 1
-        assert data["claims"][0]["id"] == "CLM-TEST003"
-
-    def test_list_claims_excludes_archived_by_default(self, client):
-        """Archived claims are excluded when include_archived is not set."""
-        resp = client.get("/api/v1/claims")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["total"] == 5
-        claim_ids = [c["id"] for c in data["claims"]]
-        assert "CLM-ARCHIVED" not in claim_ids
-
-    def test_list_claims_includes_archived_when_requested(self, client):
-        """Archived claims are included when include_archived=true."""
-        resp = client.get("/api/v1/claims?include_archived=true")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["total"] == 6
-        claim_ids = [c["id"] for c in data["claims"]]
-        assert "CLM-ARCHIVED" in claim_ids
+    """List edge cases not covered in tests/test_api_claims.py."""
 
     def test_list_claims_include_purged_query_ok(self, client):
         """include_purged=true includes purged rows in the default list."""
@@ -121,16 +71,6 @@ class TestClaimsList:
         data = resp.json()
         assert data["total"] == 1
         assert data["claims"][0]["id"] == "CLM-PURGED"
-
-    def test_pagination(self, client):
-        resp = client.get("/api/v1/claims?limit=1&offset=0")
-        data = resp.json()
-        assert len(data["claims"]) == 1
-        assert data["total"] == 5
-
-    def test_pagination_limit_zero_returns_422(self, client):
-        resp = client.get("/api/v1/claims?limit=0")
-        assert resp.status_code == 422
 
     def test_pagination_limit_negative_returns_422(self, client):
         resp = client.get("/api/v1/claims?limit=-1")
@@ -364,19 +304,7 @@ class TestIncidentsAndClaimLinks:
 
 
 class TestClaimDetail:
-    def test_get_existing(self, client):
-        resp = client.get("/api/v1/claims/CLM-TEST001")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["id"] == "CLM-TEST001"
-        assert data["policy_number"] == "POL-001"
-        assert data["status"] == "open"
-        assert "notes" in data
-        assert isinstance(data["notes"], list)
-
-    def test_not_found(self, client):
-        resp = client.get("/api/v1/claims/CLM-NOTEXIST")
-        assert resp.status_code == 404
+    """Detail edge cases not covered in tests/test_api_claims.py."""
 
     def test_get_claim_malformed_attachments_json_s3_returns_200(self, client, monkeypatch):
         """Invalid attachments JSON must not 500 when detail uses S3 presign + audit path."""
@@ -450,26 +378,30 @@ class TestClaimNotes:
         assert data["notes"] == []
 
     def test_add_note_and_get(self, client):
+        from claim_agent.db.audit_events import ACTOR_WORKFLOW
+
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/notes",
-            json={"note": "Fraud crew: No indicators found.", "actor_id": "Fraud Detection"},
+            json={"note": "Fraud crew: No indicators found."},
         )
         assert resp.status_code == 200
         assert resp.json()["claim_id"] == "CLM-TEST001"
-        assert resp.json()["actor_id"] == "Fraud Detection"
+        assert resp.json()["actor_id"] == ACTOR_WORKFLOW
 
         resp = client.get("/api/v1/claims/CLM-TEST001/notes")
         assert resp.status_code == 200
         notes = resp.json()["notes"]
         assert len(notes) == 1
         assert notes[0]["note"] == "Fraud crew: No indicators found."
-        assert notes[0]["actor_id"] == "Fraud Detection"
+        assert notes[0]["actor_id"] == ACTOR_WORKFLOW
         assert notes[0].get("created_at") is not None
 
     def test_get_claim_includes_notes(self, client):
+        from claim_agent.db.audit_events import ACTOR_WORKFLOW
+
         client.post(
             "/api/v1/claims/CLM-TEST002/notes",
-            json={"note": "Settlement crew: Payout approved.", "actor_id": "Settlement"},
+            json={"note": "Settlement crew: Payout approved."},
         )
         resp = client.get("/api/v1/claims/CLM-TEST002")
         assert resp.status_code == 200
@@ -477,7 +409,7 @@ class TestClaimNotes:
         assert "notes" in data
         assert len(data["notes"]) == 1
         assert data["notes"][0]["note"] == "Settlement crew: Payout approved."
-        assert data["notes"][0]["actor_id"] == "Settlement"
+        assert data["notes"][0]["actor_id"] == ACTOR_WORKFLOW
 
     def test_get_notes_not_found(self, client):
         resp = client.get("/api/v1/claims/CLM-NOTEXIST/notes")
@@ -486,27 +418,21 @@ class TestClaimNotes:
     def test_add_note_not_found(self, client):
         resp = client.post(
             "/api/v1/claims/CLM-NOTEXIST/notes",
-            json={"note": "Test", "actor_id": "workflow"},
+            json={"note": "Test"},
         )
         assert resp.status_code == 404
 
     def test_add_note_validation(self, client):
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/notes",
-            json={"note": "", "actor_id": "workflow"},
-        )
-        assert resp.status_code == 422
-
-        resp = client.post(
-            "/api/v1/claims/CLM-TEST001/notes",
-            json={"note": "Valid note", "actor_id": ""},
+            json={"note": ""},
         )
         assert resp.status_code == 422
 
     def test_add_note_whitespace_only_rejected(self, client):
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/notes",
-            json={"note": "   ", "actor_id": "workflow"},
+            json={"note": "   "},
         )
         assert resp.status_code == 422
         body = resp.json()
@@ -514,26 +440,21 @@ class TestClaimNotes:
         assert isinstance(errors, list)
         assert any("blank" in str(e.get("msg", "")).lower() for e in errors)
 
+    def test_add_note_extra_actor_id_field_ignored(self, client):
+        """Client-supplied actor_id is ignored; attribution uses auth identity."""
+        from claim_agent.db.audit_events import ACTOR_WORKFLOW
+
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/notes",
-            json={"note": "Valid note", "actor_id": "   "},
+            json={"note": "Valid note", "actor_id": "A" * 200},
         )
-        assert resp.status_code == 422
-        body = resp.json()
-        errors = body.get("detail", [])
-        assert isinstance(errors, list)
-        assert any("blank" in str(e.get("msg", "")).lower() for e in errors)
+        assert resp.status_code == 200
+        assert resp.json()["actor_id"] == ACTOR_WORKFLOW
 
-    def test_add_note_actor_id_max_length_rejected(self, client):
-        """actor_id longer than 128 chars is rejected with 422."""
-        resp = client.post(
-            "/api/v1/claims/CLM-TEST001/notes",
-            json={"note": "Valid note", "actor_id": "A" * 129},
-        )
-        assert resp.status_code == 422
+    def test_add_note_client_cannot_impersonate_actor(self, client):
+        """Malicious actor_id in JSON does not change stored note attribution."""
+        from claim_agent.db.audit_events import ACTOR_WORKFLOW
 
-    def test_add_note_actor_id_injection_sanitized(self, client):
-        """Malicious actor_id is sanitized before storage."""
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/notes",
             json={
@@ -547,8 +468,7 @@ class TestClaimNotes:
         assert resp.status_code == 200
         notes = resp.json()["notes"]
         assert len(notes) == 1
-        assert "[redacted]" in notes[0]["actor_id"]
-        assert "Ignore" not in notes[0]["actor_id"]
+        assert notes[0]["actor_id"] == ACTOR_WORKFLOW
 
 
 class TestClaimFraudFilings:
@@ -770,7 +690,7 @@ class TestReviewQueue:
 
     def test_siu_investigate(self, client, monkeypatch):
         """SIU investigate endpoint invokes SIU crew and returns result."""
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_specialized as claims_spec_mod
 
         mock_result = {
             "claim_id": "CLM-TEST002",
@@ -778,7 +698,7 @@ class TestReviewQueue:
             "summary": "Investigation complete.",
         }
         monkeypatch.setattr(
-            claims_mod, "run_siu_investigation_workflow", lambda *a, **kw: mock_result
+            claims_spec_mod, "run_siu_investigation_workflow", lambda *a, **kw: mock_result
         )
         with get_connection() as conn:
             conn.execute(
@@ -816,14 +736,14 @@ class TestReviewQueue:
 
     def test_follow_up_run(self, client, monkeypatch):
         """Follow-up run endpoint invokes workflow and returns result."""
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_specialized as claims_spec_mod
 
         mock_result = {
             "claim_id": "CLM-TEST001",
             "workflow_output": "Message sent.",
             "summary": "Message sent.",
         }
-        monkeypatch.setattr(claims_mod, "run_follow_up_workflow", lambda *a, **kw: mock_result)
+        monkeypatch.setattr(claims_spec_mod, "run_follow_up_workflow", lambda *a, **kw: mock_result)
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/follow-up/run",
             json={"task": "Gather photos from claimant"},
@@ -875,13 +795,13 @@ class TestReviewQueue:
 
     def test_approve_reprocesses_claim(self, client, monkeypatch):
         """Supervisor can approve claim and re-run workflow."""
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_review as claims_review_mod
 
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         reload_settings()
         mock_result = {"claim_id": "CLM-TEST004", "status": "open", "claim_type": "new"}
-        monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: mock_result)
+        monkeypatch.setattr(claims_review_mod, "run_handback_workflow", lambda *a, **kw: mock_result)
         resp = client.post(
             "/api/v1/claims/CLM-TEST004/review/approve", headers=_auth_headers("sk-sup")
         )
@@ -915,12 +835,12 @@ class TestReviewQueue:
 
     def test_approve_invalid_payout_returns_422(self, client, monkeypatch):
         """ReviewerDecisionBody rejects invalid confirmed_payout (negative, etc)."""
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_review as claims_review_mod
 
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         reload_settings()
-        monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: {})
+        monkeypatch.setattr(claims_review_mod, "run_handback_workflow", lambda *a, **kw: {})
         resp = client.post(
             "/api/v1/claims/CLM-TEST004/review/approve",
             json={"reviewer_decision": {"confirmed_payout": -100}},
@@ -979,7 +899,7 @@ class TestReviewQueue:
 
     def test_file_dispute_success_returns_response_model(self, client, monkeypatch):
         """Filing a dispute on an open claim returns 200 and DisputeResponse shape."""
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_specialized as claims_spec_mod
 
         mock_result = {
             "claim_id": "CLM-TEST001",
@@ -990,7 +910,7 @@ class TestReviewQueue:
             "adjusted_amount": 15500.0,
             "summary": "Resolution: AUTO_RESOLVED. Adjusted amount: $15,500.",
         }
-        monkeypatch.setattr(claims_mod, "run_dispute_workflow", lambda *a, **kw: mock_result)
+        monkeypatch.setattr(claims_spec_mod, "run_dispute_workflow", lambda *a, **kw: mock_result)
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/dispute",
             json={
@@ -1266,7 +1186,7 @@ class TestDenialCoverage:
         assert "unsupported" in data["detail"].lower() or "supported" in data["detail"].lower()
 
     def test_denial_coverage_success_returns_response_model(self, client, monkeypatch):
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_specialized as claims_spec_mod
         from claim_agent.db.repository import ClaimRepository
 
         # Put CLM-TEST001 in denied status
@@ -1281,7 +1201,7 @@ class TestDenialCoverage:
             "summary": "Denial upheld. Letter generated.",
         }
         monkeypatch.setattr(
-            claims_mod, "run_denial_coverage_workflow", lambda *a, **kw: mock_result
+            claims_spec_mod, "run_denial_coverage_workflow", lambda *a, **kw: mock_result
         )
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/denial-coverage",
@@ -1312,10 +1232,10 @@ class TestDenialCoverage:
             "workflow_output": "Escalated: ambiguous_policy_language",
             "summary": "Escalated for review: ambiguous_policy_language",
         }
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_specialized as claims_spec_mod
 
         monkeypatch.setattr(
-            claims_mod, "run_denial_coverage_workflow", lambda *a, **kw: mock_result
+            claims_spec_mod, "run_denial_coverage_workflow", lambda *a, **kw: mock_result
         )
         resp = client.post(
             "/api/v1/claims/CLM-TEST001/denial-coverage",
@@ -2721,7 +2641,7 @@ class TestRBAC:
         self._set_api_keys(monkeypatch, "sk-ex:executive")
         resp = client.get("/api/v1/metrics", headers=_auth_headers("sk-ex"))
         assert resp.status_code == 200
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         monkeypatch.setattr(
             claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"}
@@ -2755,7 +2675,7 @@ class TestRBAC:
     def test_adjuster_forbidden_reprocess(self, client, monkeypatch):
         """Adjuster gets 403 for reprocess (supervisor+ only)."""
         self._set_api_keys(monkeypatch, "sk-adj:adjuster")
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         monkeypatch.setattr(
             claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"}
@@ -2790,7 +2710,7 @@ class TestRBAC:
     def test_supervisor_can_reprocess(self, client, monkeypatch):
         """Supervisor can call reprocess endpoint."""
         self._set_api_keys(monkeypatch, "sk-sup:supervisor")
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         monkeypatch.setattr(
             claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"}
@@ -2804,7 +2724,7 @@ class TestRBAC:
     def test_reprocess_not_found_returns_404(self, client, monkeypatch):
         """Reprocess of non-existent claim returns 404."""
         self._set_api_keys(monkeypatch, "sk-sup:supervisor")
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "x"})
         resp = client.post(
@@ -3030,9 +2950,9 @@ class TestPostClaimsJson:
             "status": "open",
             "summary": "Claim processed successfully.",
         }
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_crud as claims_crud_mod
 
-        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        monkeypatch.setattr(claims_crud_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
         yield
 
     def test_post_claims_valid_returns_result(self, client, monkeypatch, tmp_path):
@@ -3078,15 +2998,15 @@ class TestPostClaimsJson:
         import claim_agent.storage.factory as factory_mod
 
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes._claims_helpers as claims_helpers_mod
         from claim_agent.config import get_settings
 
         settings = get_settings()
         monkeypatch.setattr(settings, "max_concurrent_background_tasks", 1)
 
-        # Wrap _background_tasks so len() reports 1 (at capacity). TestClient waits for
+        # Wrap background_tasks so len() reports 1 (at capacity). TestClient waits for
         # background tasks before returning, so we can't rely on a previous request's task.
-        real_tasks = claims_mod._background_tasks
+        real_tasks = claims_helpers_mod.background_tasks
 
         class AtCapacitySet:
             def add(self, x):
@@ -3098,7 +3018,7 @@ class TestPostClaimsJson:
             def __len__(self):
                 return len(real_tasks) + 1
 
-        monkeypatch.setattr(claims_mod, "_background_tasks", AtCapacitySet())
+        monkeypatch.setattr(claims_helpers_mod, "background_tasks", AtCapacitySet())
 
         resp = client.post("/api/v1/claims", json=VALID_CLAIM_PAYLOAD, params={"async": "true"})
         assert resp.status_code == 503
@@ -3120,7 +3040,8 @@ class TestGenerateClaimEndpoint:
         from claim_agent.models.claim import ClaimInput
 
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_mock as claims_mod
+        import claim_agent.api.routes._claims_helpers as claims_helpers_mod
         from claim_agent.config import get_settings
 
         settings = get_settings()
@@ -3131,7 +3052,7 @@ class TestGenerateClaimEndpoint:
             lambda _: ClaimInput.model_validate(VALID_CLAIM_PAYLOAD),
         )
 
-        real_tasks = claims_mod._background_tasks
+        real_tasks = claims_helpers_mod.background_tasks
 
         class AtCapacitySet:
             def add(self, x):
@@ -3143,7 +3064,7 @@ class TestGenerateClaimEndpoint:
             def __len__(self):
                 return len(real_tasks) + 1
 
-        monkeypatch.setattr(claims_mod, "_background_tasks", AtCapacitySet())
+        monkeypatch.setattr(claims_helpers_mod, "background_tasks", AtCapacitySet())
 
         resp = client.post(
             "/api/v1/claims/generate",
@@ -3167,9 +3088,14 @@ class TestProcessClaimEndpoint:
             "status": "open",
             "summary": "Claim processed successfully.",
         }
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes._claims_helpers as helpers_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
-        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        def _mock_run(*_a, **_kw):
+            return mock_result
+
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", _mock_run)
+        monkeypatch.setattr(helpers_mod, "run_claim_workflow", _mock_run)
         yield
 
     def _mock_workflow(self, monkeypatch):
@@ -3180,9 +3106,14 @@ class TestProcessClaimEndpoint:
             "status": "open",
             "summary": "Claim processed successfully.",
         }
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes._claims_helpers as helpers_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
-        monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+        def _mock_run(*_a, **_kw):
+            return mock_result
+
+        monkeypatch.setattr(claims_mod, "run_claim_workflow", _mock_run)
+        monkeypatch.setattr(helpers_mod, "run_claim_workflow", _mock_run)
         # Ensure the storage singleton is reset to local (tmp) for each test
         import claim_agent.storage.factory as factory_mod
 
@@ -3256,10 +3187,10 @@ class TestProcessClaimEndpoint:
         """A file exceeding MAX_UPLOAD_FILE_SIZE_MB returns HTTP 413."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         self._mock_workflow(monkeypatch)
-        from claim_agent.api.routes import claims as claims_module
+        import claim_agent.api.routes._claims_helpers as helpers_module
 
         # Temporarily lower the limit to make the test fast
-        monkeypatch.setattr(claims_module, "_max_upload_file_size_bytes", lambda: 10)
+        monkeypatch.setattr(helpers_module, "max_upload_file_size_bytes", lambda: 10)
         resp = client.post(
             "/api/v1/claims/process",
             data={"claim": json.dumps(VALID_CLAIM_PAYLOAD)},
@@ -3647,7 +3578,7 @@ class TestProcessClaimAsyncEndpoint:
             "status": "open",
             "summary": "Claim processed.",
         }
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         monkeypatch.setattr(claims_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
         yield
@@ -3670,12 +3601,12 @@ class TestProcessClaimAsyncEndpoint:
     ):
         """POST /claims/process/async returns 503 when at capacity and does NOT create a claim."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes._claims_helpers as claims_helpers_mod
         from claim_agent.config import get_settings
 
         settings = get_settings()
         monkeypatch.setattr(settings, "max_concurrent_background_tasks", 1)
-        real_tasks = claims_mod._background_tasks
+        real_tasks = claims_helpers_mod.background_tasks
 
         class AtCapacitySet:
             def add(self, x):
@@ -3687,7 +3618,7 @@ class TestProcessClaimAsyncEndpoint:
             def __len__(self):
                 return len(real_tasks) + 1
 
-        monkeypatch.setattr(claims_mod, "_background_tasks", AtCapacitySet())
+        monkeypatch.setattr(claims_helpers_mod, "background_tasks", AtCapacitySet())
 
         with get_connection() as conn:
             count_before = conn.execute(text("SELECT COUNT(*) as c FROM claims")).fetchone()[0]
@@ -3710,7 +3641,7 @@ class TestProcessClaimAsyncEndpoint:
         import claim_agent.storage.factory as factory_mod
 
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         # Mock workflow to return the actual claim_id (from existing_claim_id) and
         # update the DB to a terminal status so the SSE stream terminates promptly.
@@ -3753,7 +3684,7 @@ class TestProcessClaimAsyncEndpoint:
         import claim_agent.storage.factory as factory_mod
 
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_workflow as claims_mod
 
         def mock_wf(
             claim_data, llm=None, existing_claim_id=None, *, actor_id=None, ctx=None, **_kw

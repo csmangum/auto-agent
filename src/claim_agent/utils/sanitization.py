@@ -16,6 +16,7 @@ MAX_VIN = 32
 MAX_VEHICLE_MAKE = 64
 MAX_VEHICLE_MODEL = 128
 MAX_DENIAL_REASON = 4096
+MAX_DISPUTE_DESCRIPTION = 4096
 MAX_AUDIT_DETAILS = 4096
 MAX_POLICYHOLDER_EVIDENCE = 8192
 MAX_REOPENING_REASON = 1000
@@ -172,7 +173,7 @@ def _remove_injection_patterns(text: str) -> str:
 _DANGEROUS_URL_SCHEMES = ("javascript:", "data:", "vbscript:", "file:")
 
 
-def _is_safe_attachment_url(url: str) -> bool:
+def is_safe_attachment_url(url: str) -> bool:
     """Reject javascript:, data:, vbscript:, file: and other dangerous schemes."""
     if not url or not isinstance(url, str):
         return False
@@ -243,7 +244,7 @@ def sanitize_claim_data(claim_data: dict[str, Any]) -> dict[str, Any]:
                             )
                             or None,
                         }
-                        if a["url"] and _is_safe_attachment_url(a["url"]):
+                        if a["url"] and is_safe_attachment_url(a["url"]):
                             sanitized_attachments.append(a)
                 out[key] = sanitized_attachments
             else:
