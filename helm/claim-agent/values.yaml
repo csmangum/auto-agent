@@ -4,6 +4,30 @@
 # -- Number of pod replicas.
 replicaCount: 2
 
+# ── Deployment strategy ───────────────────────────────────────────────────────
+# Controls how new versions are rolled out.
+#
+# type: RollingUpdate  — default; gradually replaces old pods (zero-downtime).
+# type: BlueGreen      — deploys alongside the existing version; traffic switches
+#                        atomically via the claim-agent-active Service selector.
+#                        Use scripts/blue_green_switch.sh to cut over.
+# type: Canary         — runs a small canary Deployment next to the stable one;
+#                        traffic weight is proportional to replica counts.
+#                        Use scripts/canary_deploy.sh to manage the rollout.
+deploymentStrategy:
+  # -- Strategy type: RollingUpdate | BlueGreen | Canary
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+  # -- Active slot for BlueGreen strategy (blue or green).
+  blueGreenSlot: blue
+  canary:
+    # -- Number of canary replicas (determines traffic percentage).
+    replicas: 1
+    # -- Image tag for the canary deployment (defaults to .image.tag).
+    imageTag: ""
+
 image:
   # -- Container image repository.
   repository: ghcr.io/csmangum/auto-agent

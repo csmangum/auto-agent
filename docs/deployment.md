@@ -338,7 +338,167 @@ DATABASE_URL="postgresql://..." uv run alembic upgrade head
 
 ---
 
-## 6. Environment variable reference
+## 6. Deployment strategies — Blue/Green and Canary
+
+The default deployment strategy is `RollingUpdate` (zero-downtime, in-place). For production workloads that require a safe rollback mechanism or incremental traffic shifting, two additional strategies are provided:
+
+| Strategy | Files | When to use |
+|----------|-------|-------------|
+| **Blue/Green** | `k8s/blue-green/`, `scripts/blue_green_switch.sh` | Instant, atomic traffic switch; easy full rollback |
+| **Canary** | `k8s/blue-green/deployment-canary.yaml`, `scripts/canary_deploy.sh` | Incremental traffic shifting to detect regressions |
+| **Rolling** | `k8s/deployment.yaml` (default) | Simple zero-downtime in-place update |
+
+All three strategies are also available in the Helm chart via `deploymentStrategy.type`.
+
+---
+
+### 6.1 Blue/Green (raw manifests)
+
+Blue/Green maintains two identical deployments — **blue** and **green** — and switches traffic atomically by changing the Service selector. Only one slot serves live traffic at a time; the inactive slot can be kept warm for instant rollback.
+
+#### Initial setup
+
+```bash
+# Apply all blue/green resources (both deployment slots + active Service)
+kubectl apply -f k8s/blue-green/
+
+# Verify both slots start up (only the active slot receives traffic)
+kubectl rollout status deployment/claim-agent-blue  -n claim-agent
+kubectl rollout status deployment/claim-agent-green -n claim-agent
+```
+
+The `claim-agent-active` Service initially routes to the **blue** slot (see `k8s/blue-green/service.yaml`).
+
+#### Deploying a new version
+
+```bash
+# 1. Update the INACTIVE slot (assume green is inactive)
+kubectl set image deployment/claim-agent-green \
+  claim-agent=ghcr.io/<your-org>/auto-agent:<new-tag> \
+  -n claim-agent
+
+# 2. Wait for it to be ready
+kubectl rollout status deployment/claim-agent-green -n claim-agent --timeout=300s
+
+# 3. Switch traffic to green
+bash scripts/blue_green_switch.sh green
+
+# 4. (Optional) Scale down inactive blue slot to save resources
+bash scripts/blue_green_switch.sh green --scale-down-inactive
+```
+
+#### Rolling back
+
+```bash
+# Switch traffic back to the previous slot instantly
+bash scripts/blue_green_switch.sh blue
+```
+
+#### Blue/Green with Helm
+
+```bash
+# Initial install — deploy the blue slot
+helm upgrade --install claim-agent ./helm/claim-agent \
+  --set deploymentStrategy.type=BlueGreen \
+  --set deploymentStrategy.blueGreenSlot=blue \
+  --set image.tag=1.0.0
+
+# Deploy new version to the green slot
+helm upgrade claim-agent ./helm/claim-agent \
+  --set deploymentStrategy.type=BlueGreen \
+  --set deploymentStrategy.blueGreenSlot=green \
+  --set image.tag=1.1.0
+
+# Switch traffic (the Service selector updates automatically with the Helm upgrade above)
+# Rollback: re-run helm upgrade with blueGreenSlot=blue
+```
+
+---
+
+### 6.2 Canary (raw manifests)
+
+A canary deployment runs the new version on a small number of replicas alongside the stable version. The existing Service selects pods from both, distributing traffic proportionally to replica counts. For example: 1 canary + 9 stable ≈ 10 % canary traffic.
+
+#### Apply the canary deployment
+
+```bash
+# Ensure the stable deployment and Service are running
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+
+# Apply the canary manifest
+kubectl apply -f k8s/blue-green/deployment-canary.yaml
+```
+
+#### Managing the canary rollout
+
+The `scripts/canary_deploy.sh` helper manages the full lifecycle:
+
+```bash
+# Start: 10 % canary traffic (1 canary / 9 stable)
+bash scripts/canary_deploy.sh start \
+  --image ghcr.io/<your-org>/auto-agent:1.1.0 \
+  --canary-replicas 1 \
+  --stable-replicas 9
+
+# Monitor error rates and latency, then increase to 50 %
+bash scripts/canary_deploy.sh promote \
+  --canary-replicas 5 \
+  --stable-replicas 5
+
+# Fully promote: update stable to the new image, scale canary to 0
+bash scripts/canary_deploy.sh finish --final-replicas 2
+
+# Roll back: scale canary to 0, restore stable
+bash scripts/canary_deploy.sh rollback --stable-replicas 9
+```
+
+#### Canary with Helm
+
+```bash
+# Deploy stable version
+helm upgrade --install claim-agent ./helm/claim-agent \
+  --set image.tag=1.0.0
+
+# Add a 10 % canary for a new image
+helm upgrade claim-agent ./helm/claim-agent \
+  --set deploymentStrategy.type=Canary \
+  --set deploymentStrategy.canary.replicas=1 \
+  --set deploymentStrategy.canary.imageTag=1.1.0 \
+  --set replicaCount=9
+
+# Promote: update stable image, remove canary
+helm upgrade claim-agent ./helm/claim-agent \
+  --set deploymentStrategy.type=RollingUpdate \
+  --set image.tag=1.1.0 \
+  --set replicaCount=2
+```
+
+---
+
+### 6.3 Automated deployment via GitHub Actions
+
+The `.github/workflows/deploy.yml` workflow automates deployments after CI passes on `main`. It can be triggered manually with a choice of strategy:
+
+```
+Actions → Deploy → Run workflow
+  environment: production | staging
+  strategy: blue-green | canary | rolling
+  canary_weight: 10        # % traffic for canary (canary strategy only)
+  image_tag: (optional)    # leave blank to use the commit SHA
+```
+
+**Prerequisites for the workflow:**
+- Add a `KUBECONFIG` repository secret containing the base64-encoded kubeconfig for your cluster:
+  ```bash
+  cat ~/.kube/config | base64 | pbcopy
+  # paste as GitHub secret: Settings → Secrets → KUBECONFIG
+  ```
+- Configure a GitHub [environment](https://docs.github.com/en/actions/deployment/targeting-different-environments) named `production` (and optionally `staging`) with any required approval gates.
+
+---
+
+## 7. Environment variable reference
 
 See `.env.example` for the full list of supported environment variables. The most important ones for production are:
 
@@ -357,7 +517,7 @@ See `.env.example` for the full list of supported environment variables. The mos
 
 ---
 
-## 7. Security checklist
+## 8. Security checklist
 
 - [ ] Replace all `CHANGE_ME` placeholder values in `k8s/secret.yaml` before applying.
 - [ ] Use an external secrets manager (AWS Secrets Manager, Vault, Sealed Secrets) in production — do not commit plaintext credentials to Git.
