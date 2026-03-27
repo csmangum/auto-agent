@@ -179,8 +179,6 @@ def send_otp_notification(
 
     config = get_notification_config()
     otp_tmpl_vars = {"otp": otp, "ttl_minutes": _otp_ttl_minutes(), "verification_id": verification_id}
-    subject = config["tmpl_otp_email_subject"].format(**otp_tmpl_vars)
-    message = config["tmpl_otp_email_body"].format(**otp_tmpl_vars)
     if channel == "email":
         if not config["email_enabled"]:
             logger.warning(
@@ -189,6 +187,17 @@ def send_otp_notification(
                 verification_id,
             )
             return
+        try:
+            subject = config["tmpl_otp_email_subject"].format(**otp_tmpl_vars)
+            message = config["tmpl_otp_email_body"].format(**otp_tmpl_vars)
+        except (KeyError, ValueError):
+            logger.error(
+                "OTP email template misconfigured; falling back to default. "
+                "verification_id=%s",
+                verification_id,
+            )
+            subject = "Your verification code"
+            message = f"Your OTP is {otp}. It expires in {otp_tmpl_vars['ttl_minutes']} minutes."
         _send_email(
             api_key=config["sendgrid_api_key"],
             from_email=config["sendgrid_from_email"],
@@ -206,12 +215,21 @@ def send_otp_notification(
                 verification_id,
             )
             return
+        try:
+            sms_message = config["tmpl_otp_sms_body"].format(**otp_tmpl_vars)
+        except (KeyError, ValueError):
+            logger.error(
+                "OTP SMS template misconfigured; falling back to default. "
+                "verification_id=%s",
+                verification_id,
+            )
+            sms_message = f"Your OTP is {otp}. Valid for {otp_tmpl_vars['ttl_minutes']} minutes."
         _send_sms(
             account_sid=config["twilio_account_sid"],
             auth_token=config["twilio_auth_token"],
             from_phone=config["twilio_from_phone"],
             to_phone=claimant_identifier,
-            message=config["tmpl_otp_sms_body"].format(**otp_tmpl_vars),
+            message=sms_message,
             event="otp_verification",
             claim_id=verification_id,
         )
@@ -293,19 +311,44 @@ def notify_claimant(
         _EXECUTOR.submit(_send_sms, **_sms_kwargs)
 
 
+def _safe_format(
+    config: dict[str, Any],
+    key: str,
+    tmpl_vars: dict[str, Any],
+    default_tmpl: str,
+    event: str,
+) -> str:
+    """Retrieve config[key] (or *default_tmpl* if missing), then format with *tmpl_vars*.
+
+    On KeyError or ValueError during formatting (e.g. unknown placeholder in a
+    custom template), logs an error and falls back to formatting *default_tmpl*,
+    which is a known-good template controlled by this module.
+    """
+    template = config.get(key, default_tmpl)
+    try:
+        return template.format(**tmpl_vars)
+    except (KeyError, ValueError):
+        logger.error(
+            "Notification template misconfigured for event=%r (key=%r); falling back to default.",
+            event,
+            key,
+        )
+        return default_tmpl.format(**tmpl_vars)
+
+
 def _build_notification_message(
     event: str, claim_id: str, template_data: dict[str, Any] | None, config: dict[str, Any]
 ) -> tuple[str, str]:
     tmpl_vars = {"claim_id": claim_id}
     if event == "receipt_acknowledged":
         return (
-            config["tmpl_receipt_acknowledged_subject"].format(**tmpl_vars),
-            config["tmpl_receipt_acknowledged_body"].format(**tmpl_vars),
+            _safe_format(config, "tmpl_receipt_acknowledged_subject", tmpl_vars, "Claim {claim_id} received", event),
+            _safe_format(config, "tmpl_receipt_acknowledged_body", tmpl_vars, "Your claim {claim_id} has been received.", event),
         )
     if event == "denial_letter":
         return (
-            config["tmpl_denial_letter_subject"].format(**tmpl_vars),
-            config["tmpl_denial_letter_body"].format(**tmpl_vars),
+            _safe_format(config, "tmpl_denial_letter_subject", tmpl_vars, "Claim {claim_id} decision", event),
+            _safe_format(config, "tmpl_denial_letter_body", tmpl_vars, "A decision has been made on claim {claim_id}.", event),
         )
     if event == "follow_up_request":
         message = ""
@@ -313,13 +356,16 @@ def _build_notification_message(
             raw_message = template_data.get("message")
             if raw_message is not None:
                 message = str(raw_message).strip()
-        subject = config["tmpl_follow_up_subject"].format(**tmpl_vars)
+        subject = _safe_format(config, "tmpl_follow_up_subject", tmpl_vars, "Follow-up on claim {claim_id}", event)
         if message:
             return (subject, message)
-        return (subject, config["tmpl_follow_up_body"].format(**tmpl_vars))
+        return (
+            subject,
+            _safe_format(config, "tmpl_follow_up_body", tmpl_vars, "We need additional information for claim {claim_id}.", event),
+        )
     return (
-        config["tmpl_generic_subject"].format(**tmpl_vars),
-        config["tmpl_generic_body"].format(**tmpl_vars),
+        _safe_format(config, "tmpl_generic_subject", tmpl_vars, "Update on claim {claim_id}", event),
+        _safe_format(config, "tmpl_generic_body", tmpl_vars, "There is an update on your claim {claim_id}.", event),
     )
 
 
