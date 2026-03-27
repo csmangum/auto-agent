@@ -4,7 +4,7 @@ import atexit
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -325,7 +325,7 @@ def _safe_format(
     custom template), logs an error and falls back to formatting *default_tmpl*,
     which is a known-good template controlled by this module.
     """
-    template = config.get(key, default_tmpl)
+    template = cast(str, config.get(key, default_tmpl))
     try:
         return template.format(**tmpl_vars)
     except (KeyError, ValueError):
