@@ -107,8 +107,8 @@ export function beforeSend(event: Sentry.Event): Sentry.Event {
   }
 
   // 5. Scrub breadcrumb messages and data.
-  if (event.breadcrumbs?.values) {
-    for (const crumb of event.breadcrumbs.values) {
+  if (event.breadcrumbs) {
+    for (const crumb of event.breadcrumbs) {
       if (crumb.message) {
         crumb.message = scrubString(crumb.message);
       }

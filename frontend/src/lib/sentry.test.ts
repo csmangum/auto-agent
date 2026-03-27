@@ -175,30 +175,26 @@ describe('beforeSend', () => {
   it('scrubs PII from breadcrumb messages', async () => {
     const { beforeSend } = await import('./sentry');
     const event: SentryEvent = {
-      breadcrumbs: {
-        values: [{ message: 'Loaded claim 550e8400-e29b-41d4-a716-446655440000', timestamp: 0 }],
-      },
+      breadcrumbs: [{ message: 'Loaded claim 550e8400-e29b-41d4-a716-446655440000', timestamp: 0 }],
     };
     const result = beforeSend(event);
-    expect(result.breadcrumbs!.values![0].message).toBe('Loaded claim [REDACTED_ID]');
+    expect(result.breadcrumbs![0].message).toBe('Loaded claim [REDACTED_ID]');
   });
 
   it('scrubs PII from breadcrumb data values', async () => {
     const { beforeSend } = await import('./sentry');
     const event: SentryEvent = {
-      breadcrumbs: {
-        values: [
-          {
-            message: 'API call',
-            data: { userId: 'user@example.com', action: 'view' },
-            timestamp: 0,
-          },
-        ],
-      },
+      breadcrumbs: [
+        {
+          message: 'API call',
+          data: { userId: 'user@example.com', action: 'view' },
+          timestamp: 0,
+        },
+      ],
     };
     const result = beforeSend(event);
-    expect(result.breadcrumbs!.values![0].data!['userId']).toBe('[REDACTED_EMAIL]');
-    expect(result.breadcrumbs!.values![0].data!['action']).toBe('view');
+    expect(result.breadcrumbs![0].data!['userId']).toBe('[REDACTED_EMAIL]');
+    expect(result.breadcrumbs![0].data!['action']).toBe('view');
   });
 
   it('leaves events without PII unchanged (except user)', async () => {
