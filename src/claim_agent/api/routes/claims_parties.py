@@ -1,7 +1,6 @@
 """Party management and portal token routes for claims."""
 
-import logging
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -25,8 +24,6 @@ from claim_agent.services.repair_shop_portal_tokens import create_repair_shop_ac
 from claim_agent.services.third_party_portal_tokens import create_third_party_access_token
 from claim_agent.api.routes._claims_helpers import get_claim_context
 
-logger = logging.getLogger(__name__)
-
 router = APIRouter(tags=["claims"])
 
 RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
@@ -40,10 +37,9 @@ RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 class PartyConsentUpdate(BaseModel):
     """Request body for PATCH /claims/{claim_id}/parties/{party_id}/consent."""
 
-    consent_status: str = Field(
+    consent_status: Literal["pending", "granted", "revoked"] = Field(
         ...,
         description="Data processing consent status. Revoked excludes party PII from LLM prompts.",
-        pattern="^(pending|granted|revoked)$",
     )
 
 

@@ -1,7 +1,6 @@
 """Specialized workflow routes for claims: follow-up, SIU, disputes, denials, and supplemental."""
 
 import asyncio
-import logging
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -30,8 +29,6 @@ from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
 from claim_agent.workflow.follow_up_orchestrator import run_follow_up_workflow
 from claim_agent.workflow.siu_orchestrator import run_siu_investigation as run_siu_investigation_workflow
 from claim_agent.api.routes._claims_helpers import get_claim_context
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["claims"])
 

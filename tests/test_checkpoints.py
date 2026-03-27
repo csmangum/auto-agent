@@ -805,7 +805,7 @@ class TestReprocessAPIFromStage:
         claim_id = _make_claim(repo)
 
         try:
-            with patch("claim_agent.api.routes.claims.run_claim_workflow") as mock_wf:
+            with patch("claim_agent.api.routes.claims_workflow.run_claim_workflow") as mock_wf:
                 mock_wf.return_value = {"claim_id": claim_id, "status": "open"}
                 resp = client.post(
                     f"/api/v1/claims/{claim_id}/reprocess?from_stage=workflow",
