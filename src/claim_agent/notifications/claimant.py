@@ -178,14 +178,9 @@ def send_otp_notification(
         return
 
     config = get_notification_config()
-    subject = "Your DSAR verification code"
-    message = (
-        f"Your one-time verification code is: {otp}\n\n"
-        f"This code expires in {_otp_ttl_minutes()} minutes. "
-        "Do not share it with anyone.\n\n"
-        f"Reference: {verification_id}"
-    )
-
+    otp_tmpl_vars = {"otp": otp, "ttl_minutes": _otp_ttl_minutes(), "verification_id": verification_id}
+    subject = config["tmpl_otp_email_subject"].format(**otp_tmpl_vars)
+    message = config["tmpl_otp_email_body"].format(**otp_tmpl_vars)
     if channel == "email":
         if not config["email_enabled"]:
             logger.warning(
@@ -216,7 +211,7 @@ def send_otp_notification(
             auth_token=config["twilio_auth_token"],
             from_phone=config["twilio_from_phone"],
             to_phone=claimant_identifier,
-            message=f"Your DSAR verification code: {otp}. Expires in {_otp_ttl_minutes()} min.",
+            message=config["tmpl_otp_sms_body"].format(**otp_tmpl_vars),
             event="otp_verification",
             claim_id=verification_id,
         )
@@ -272,7 +267,7 @@ def notify_claimant(
         logger.warning("Unknown claimant event: %s", event)
         return
 
-    subject, message = _build_notification_message(event, claim_id, template_data)
+    subject, message = _build_notification_message(event, claim_id, template_data, config)
 
     if email and config["email_enabled"]:
         _email_kwargs = dict(
@@ -299,17 +294,18 @@ def notify_claimant(
 
 
 def _build_notification_message(
-    event: str, claim_id: str, template_data: dict[str, Any] | None
+    event: str, claim_id: str, template_data: dict[str, Any] | None, config: dict[str, Any]
 ) -> tuple[str, str]:
+    tmpl_vars = {"claim_id": claim_id}
     if event == "receipt_acknowledged":
         return (
-            f"Claim {claim_id} acknowledgment",
-            f"We received and acknowledged your claim {claim_id}.",
+            config["tmpl_receipt_acknowledged_subject"].format(**tmpl_vars),
+            config["tmpl_receipt_acknowledged_body"].format(**tmpl_vars),
         )
     if event == "denial_letter":
         return (
-            f"Claim {claim_id} denial letter",
-            f"Your claim {claim_id} has been denied. Appeal rights are included in your denial letter.",
+            config["tmpl_denial_letter_subject"].format(**tmpl_vars),
+            config["tmpl_denial_letter_body"].format(**tmpl_vars),
         )
     if event == "follow_up_request":
         message = ""
@@ -317,10 +313,14 @@ def _build_notification_message(
             raw_message = template_data.get("message")
             if raw_message is not None:
                 message = str(raw_message).strip()
+        subject = config["tmpl_follow_up_subject"].format(**tmpl_vars)
         if message:
-            return (f"Claim {claim_id} follow-up", message)
-        return (f"Claim {claim_id} follow-up", f"An update is available for your claim {claim_id}.")
-    return (f"Claim {claim_id} update", f"An update is available for your claim {claim_id}.")
+            return (subject, message)
+        return (subject, config["tmpl_follow_up_body"].format(**tmpl_vars))
+    return (
+        config["tmpl_generic_subject"].format(**tmpl_vars),
+        config["tmpl_generic_body"].format(**tmpl_vars),
+    )
 
 
 def _send_email(
