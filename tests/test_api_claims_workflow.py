@@ -255,8 +255,9 @@ class TestStreamClaimUpdates:
         assert resp.status_code == 404
 
     def test_stream_sends_done_event(self, client):
-        """Stream terminates with a done event for claims already in a terminal status."""
-        # CLM-TEST001 is in status 'open' which is terminal – stream should emit done quickly
+        """Stream terminates with a done event for claims in a non-pending/processing status."""
+        # CLM-TEST001 has status 'open', which is not 'pending' or 'processing',
+        # so the SSE generator emits a final done event immediately.
         resp = client.get("/api/v1/claims/CLM-TEST001/stream")
         assert resp.status_code == 200
         content = resp.text
