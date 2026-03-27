@@ -11,7 +11,7 @@ from claim_agent.api.claim_access import (
     adjuster_identity_scopes_assignee,
     ensure_claim_access_for_adjuster,
 )
-from claim_agent.api.deps import require_role
+from claim_agent.api.deps import RequireAdjuster
 from claim_agent.api.idempotency import (
     get_idempotency_key_and_cached,
     release_idempotency_on_error,
@@ -25,13 +25,13 @@ from claim_agent.db.database import get_connection, row_to_dict
 from claim_agent.exceptions import ClaimAlreadyProcessingError
 from claim_agent.models.claim import ClaimInput
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
-import claim_agent.api.routes._claims_helpers as _claims_helpers
 from claim_agent.api.routes._claims_helpers import (
     ALLOWED_SORT_FIELDS as _ALLOWED_SORT_FIELDS,
     BACKGROUND_QUEUE_FULL_RETRY_AFTER,
     PRIORITY_VALUES,
     adjuster_scope_params as _adjuster_scope_params,
     apply_adjuster_claim_filter as _apply_adjuster_claim_filter,
+    background_workflow_queue_full,
     get_claim_context,
     http_already_processing as _http_already_processing,
     process_claim_with_attachments as _process_claim_with_attachments,
@@ -41,10 +41,8 @@ from claim_agent.api.routes._claims_helpers import (
 
 router = APIRouter(tags=["claims"])
 
-RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
-
-@router.get("/claims/stats")
+@router.get("/claims/stats", dependencies=[RequireAdjuster])
 def get_claims_stats(auth: AuthContext = RequireAdjuster):
     """Aggregate statistics: count by status, count by type, totals."""
     scope = _adjuster_scope_params(auth)
@@ -335,7 +333,7 @@ async def create_claim(
 
     try:
         if async_mode:
-            if await _claims_helpers.background_workflow_queue_full():
+            if await background_workflow_queue_full():
                 release_idempotency_on_error(idem_key)
                 raise HTTPException(
                     status_code=503,

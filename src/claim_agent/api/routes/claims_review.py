@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.claim_access import ensure_claim_access_for_adjuster
-from claim_agent.api.deps import require_role
+from claim_agent.api.deps import RequireAdjuster, RequireSupervisor
 from claim_agent.context import ClaimContext
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.claim_data import claim_data_from_row
@@ -26,9 +26,6 @@ from claim_agent.api.routes._claims_helpers import (
 )
 
 router = APIRouter(tags=["claims"])
-
-RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
-RequireSupervisor = require_role("supervisor", "admin", "executive")
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +89,7 @@ class ApproveBody(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-@router.patch("/claims/{claim_id}/assign")
+@router.patch("/claims/{claim_id}/assign", dependencies=[RequireSupervisor])
 def assign_claim(
     claim_id: str,
     body: AssignBody = Body(...),
@@ -100,8 +97,6 @@ def assign_claim(
     ctx: ClaimContext = Depends(get_claim_context),
 ):
     """Assign claim to an adjuster."""
-    if ctx.repo.get_claim(claim_id) is None:
-        raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
     actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
     try:
         ctx.adjuster_service.assign(claim_id, body.assignee, actor_id=actor_id)
@@ -112,7 +107,7 @@ def assign_claim(
     return {"claim_id": claim_id, "assignee": body.assignee}
 
 
-@router.post("/claims/{claim_id}/acknowledge")
+@router.post("/claims/{claim_id}/acknowledge", dependencies=[RequireAdjuster])
 def acknowledge_claim(
     claim_id: str,
     auth: AuthContext = RequireAdjuster,
@@ -128,7 +123,7 @@ def acknowledge_claim(
     return {"claim_id": claim_id, "acknowledged": True}
 
 
-@router.post("/claims/{claim_id}/review/approve")
+@router.post("/claims/{claim_id}/review/approve", dependencies=[RequireSupervisor])
 async def approve_review(
     claim_id: str,
     body: ApproveBody = Body(default=ApproveBody()),
@@ -192,7 +187,7 @@ async def approve_review(
     return result
 
 
-@router.post("/claims/{claim_id}/review/reject")
+@router.post("/claims/{claim_id}/review/reject", dependencies=[RequireAdjuster])
 def reject_review(
     claim_id: str,
     body: RejectBody = Body(default=RejectBody()),
@@ -211,7 +206,7 @@ def reject_review(
     return {"claim_id": claim_id, "status": "denied"}
 
 
-@router.post("/claims/{claim_id}/review/request-info")
+@router.post("/claims/{claim_id}/review/request-info", dependencies=[RequireAdjuster])
 def request_info_review(
     claim_id: str,
     body: RequestInfoBody = Body(default=RequestInfoBody()),
@@ -230,7 +225,7 @@ def request_info_review(
     return {"claim_id": claim_id, "status": "pending_info"}
 
 
-@router.post("/claims/{claim_id}/review/escalate-to-siu")
+@router.post("/claims/{claim_id}/review/escalate-to-siu", dependencies=[RequireAdjuster])
 def escalate_to_siu(
     claim_id: str,
     auth: AuthContext = RequireAdjuster,
@@ -248,7 +243,7 @@ def escalate_to_siu(
     return {"claim_id": claim_id, "status": "under_investigation"}
 
 
-@router.post("/claims/{claim_id}/review")
+@router.post("/claims/{claim_id}/review", dependencies=[RequireSupervisor])
 async def run_claim_review(
     claim_id: str,
     auth: AuthContext = RequireSupervisor,

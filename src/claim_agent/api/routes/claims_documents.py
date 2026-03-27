@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.claim_access import ensure_claim_access_for_adjuster
-from claim_agent.api.deps import require_role
+from claim_agent.api.deps import RequireAdjuster
 from claim_agent.context import ClaimContext
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.document_repository import build_document_version_groups
@@ -30,8 +30,6 @@ from claim_agent.api.routes._claims_helpers import (
 )
 
 router = APIRouter(tags=["claims"])
-
-RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 
 _RETENTION_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 

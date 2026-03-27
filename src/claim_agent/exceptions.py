@@ -13,6 +13,10 @@ class DomainValidationError(ClaimAgentError):
     """Invalid input (domain validation, distinct from Pydantic ValidationError)."""
 
 
+class FollowUpMessageNotFoundError(DomainValidationError):
+    """Follow-up message ID does not exist (distinct from wrong-claim validation)."""
+
+
 class ClaimNotFoundError(ClaimAgentError):
     """Claim ID does not exist."""
 
