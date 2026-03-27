@@ -108,8 +108,8 @@ services:
   # Monitoring stack: Prometheus + Alertmanager + Grafana + Loki + Promtail.
   # Start with: docker compose -f docker-compose.prod.yml --profile monitoring up -d
   # Access Grafana at https://<host>/grafana or http://localhost:3000.
-  # Access Prometheus at http://localhost:9090 (restrict access via firewall in production).
-  # Access Loki logs via Grafana → Explore → Loki datasource.
+  # Access Prometheus at http://127.0.0.1:9090 (bound to localhost; use SSH tunnel if remote).
+  # Access Loki only via Grafana (Loki listens on localhost:3100 by default here).
   #
   # Log retention is configured by LOG_RETENTION_DAYS (default: 90).
   # Update retention_period in monitoring/loki-config.yml to match (1 day = 24h).
@@ -117,7 +117,7 @@ services:
     image: grafana/loki:3.3.2
     profiles: ["monitoring"]
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     volumes:
       - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
       - loki-data:/loki
@@ -146,7 +146,7 @@ services:
     image: prom/prometheus:v3.1.0
     profiles: ["monitoring"]
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
@@ -171,7 +171,7 @@ services:
     image: prom/alertmanager:v0.27.0
     profiles: ["monitoring"]
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
@@ -190,7 +190,7 @@ services:
     image: grafana/grafana:11.4.0
     profiles: ["monitoring"]
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       # Required when the monitoring profile is enabled (no insecure default).
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD when using the monitoring profile}

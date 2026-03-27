@@ -39,3 +39,19 @@ def test_scrub_exif_from_jpeg_removes_exif():
 def test_scrub_returns_original_when_not_image():
     data = b"not an image at all"
     assert image_bytes_privacy.scrub_exif_from_image_bytes(data) is data
+
+
+def test_scrub_unsupported_format_logs_warning(caplog):
+    """GIF is not in the strip set; operator should see WARNING when scrub is requested."""
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (4, 4), (1, 2, 3)).save(buf, format="GIF")
+    gif_bytes = buf.getvalue()
+
+    import logging
+
+    caplog.set_level(logging.WARNING)
+    out = image_bytes_privacy.scrub_exif_from_image_bytes(gif_bytes)
+    assert out == gif_bytes
+    assert any("EXIF scrub skipped" in r.message for r in caplog.records)

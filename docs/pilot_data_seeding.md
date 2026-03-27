@@ -31,6 +31,7 @@ python scripts/seed_pilot_data.py [OPTIONS]
 | `--months M` | Months of historical data to generate | 6 |
 | `--db-path PATH` | Path to SQLite database | `data/claims.db` |
 | `--clean` | Delete existing claims before seeding | `false` |
+| `--seed N` | Optional RNG seed for reproducible generation | (none) |
 
 ### Examples
 

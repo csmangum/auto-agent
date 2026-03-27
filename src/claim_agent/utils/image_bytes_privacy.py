@@ -34,8 +34,9 @@ def scrub_exif_from_image_bytes(data: bytes) -> bytes:
             im.load()
             fmt = (im.format or "").upper()
             if fmt not in _STRIP_FORMATS:
-                logger.debug(
-                    "Reverse-image EXIF scrub skipped for format %s (not in supported set)",
+                logger.warning(
+                    "Reverse-image EXIF scrub skipped for format %s (not in supported set); "
+                    "original bytes may still contain metadata",
                     im.format,
                 )
                 return data

@@ -42,8 +42,15 @@ export default class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
       return (
-        <div className="flex flex-col items-center justify-center min-h-[400px] p-8 animate-fade-in">
-          <span className="text-5xl mb-4 opacity-30">💥</span>
+        <div
+          className="flex flex-col items-center justify-center min-h-[400px] p-8 animate-fade-in"
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
+        >
+          <span className="text-5xl mb-4 opacity-30" aria-hidden="true">
+            💥
+          </span>
           <h2 className="text-xl font-semibold text-gray-200 mb-2">Something went wrong</h2>
           <p className="text-sm text-gray-400 mb-6 max-w-md text-center">
             An unexpected error occurred. If the problem persists, contact support. Details were

@@ -31,18 +31,16 @@ scrape_configs:
     pipeline_stages:
       # Parse JSON log lines produced when CLAIM_AGENT_LOG_FORMAT=json.
       # Falls back gracefully for human-readable lines (non-JSON lines are forwarded as-is).
+      # Do not promote claim_id / correlation_id to Loki labels (high cardinality); use LogQL:
+      #   {job="claim-agent"} | json | claim_id="CLM-123"
       - json:
           expressions:
             level: level
-            claim_id: claim_id
             claim_type: claim_type
-            correlation_id: correlation_id
             logger: logger
       - labels:
           level:
-          claim_id:
           claim_type:
-          correlation_id:
           logger:
       # Drop DEBUG lines in non-debug deployments to reduce ingestion volume.
       # Remove this stage if DEBUG logs are needed in Loki.

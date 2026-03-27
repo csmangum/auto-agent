@@ -15,6 +15,7 @@ Options:
     --months M   Months of historical data to generate (default: 6)
     --db-path    Path to SQLite database (default: data/claims.db)
     --clean      Delete existing claims before seeding
+    --seed N     Optional RNG seed for reproducible generation
 
 Uses MOCK_DB_PATH (default data/mock_db.json) for policy and vehicle data.
 Re-running with --clean will reset the database; without --clean, new claims are added.
@@ -318,7 +319,7 @@ def seed_claims_to_db(claims: list[dict], db_path: str, clean: bool = False) -> 
         
         for claim in claims:
             try:
-                conn.execute(
+                cur = conn.execute(
                     """
                     INSERT OR IGNORE INTO claims (
                         id, policy_number, vin, vehicle_year, vehicle_make, vehicle_model,
@@ -342,7 +343,8 @@ def seed_claims_to_db(claims: list[dict], db_path: str, clean: bool = False) -> 
                         claim["payout_amount"],
                     ),
                 )
-                if conn.total_changes > 0:
+                # rowcount is per-statement (conn.total_changes is cumulative and breaks counting).
+                if (cur.rowcount or 0) > 0:
                     inserted += 1
                 else:
                     skipped += 1
@@ -422,7 +424,17 @@ def main() -> None:
         action="store_true",
         help="Delete existing claims before seeding",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Optional RNG seed for reproducible claim generation (tests / demos)",
+    )
     args = parser.parse_args()
+    
+    if args.seed is not None:
+        random.seed(args.seed)
     
     # Determine database path
     db_path = args.db_path

@@ -143,10 +143,9 @@ class AdapterHttpClient:
             return self._http_client
         with self._client_lock:
             if self._http_client is None:
-                self._http_client = httpx.Client(
-                    timeout=self._timeout,
-                    headers=self._build_headers(),
-                )
+                # Do not set auth/default headers on the client; each request passes
+                # ``_build_headers()`` once to avoid duplicate Authorization values.
+                self._http_client = httpx.Client(timeout=self._timeout)
             return self._http_client
 
     def _build_headers(self) -> dict[str, str]:
@@ -236,12 +235,22 @@ class AdapterHttpClient:
                     )
                     return resp
         except RetryError as re:
-            self._record_failure()
             last_exc = re.last_attempt.exception()
             elapsed = time.perf_counter() - t0
             status_class = (
                 _status_class_from_exception(last_exc) if last_exc is not None else "error"
             )
+            # Client errors (4xx) are not upstream "outages"; do not trip the circuit.
+            if isinstance(last_exc, httpx.HTTPStatusError) and last_exc.response is not None:
+                if last_exc.response.status_code < 500:
+                    record_adapter_http_request(
+                        adapter_name=self._adapter_name,
+                        method=method,
+                        duration_seconds=elapsed,
+                        status_class=status_class,
+                    )
+                    raise last_exc from re
+            self._record_failure()
             record_adapter_http_request(
                 adapter_name=self._adapter_name,
                 method=method,
@@ -252,9 +261,18 @@ class AdapterHttpClient:
                 raise last_exc from re
             raise RuntimeError("Retry loop exited without return or exception") from re
         except Exception as exc:
-            self._record_failure()
             elapsed = time.perf_counter() - t0
             status_class = _status_class_from_exception(exc)
+            if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+                if exc.response.status_code < 500:
+                    record_adapter_http_request(
+                        adapter_name=self._adapter_name,
+                        method=method,
+                        duration_seconds=elapsed,
+                        status_class=status_class,
+                    )
+                    raise
+            self._record_failure()
             record_adapter_http_request(
                 adapter_name=self._adapter_name,
                 method=method,
@@ -262,7 +280,6 @@ class AdapterHttpClient:
                 status_class=status_class,
             )
             raise
-        raise RuntimeError("Retry loop exited without return or exception")
 
     def _request(
         self,

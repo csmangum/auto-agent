@@ -16,8 +16,9 @@
 #   # Promote to 50 %
 #   scripts/canary_deploy.sh promote --canary-replicas 5 --stable-replicas 5
 #
-#   # Fully promote (retire stable, scale canary to full capacity)
-#   scripts/canary_deploy.sh finish --final-replicas 2
+#   # Fully promote (stable replica count defaults to current stable deployment unless overridden)
+#   scripts/canary_deploy.sh finish
+#   scripts/canary_deploy.sh finish --final-replicas 5
 #
 #   # Roll back (delete canary, restore stable replicas)
 #   scripts/canary_deploy.sh rollback --stable-replicas 2
@@ -37,7 +38,8 @@ CANARY_DEPLOY="claim-agent-canary"
 CANARY_IMAGE=""
 CANARY_REPLICAS=1
 STABLE_REPLICAS=9
-FINAL_REPLICAS=2
+# Empty = on `finish`, use current stable Deployment spec.replicas (see finish handler).
+FINAL_REPLICAS=""
 DRY_RUN=false
 WAIT_TIMEOUT=120
 
@@ -142,6 +144,17 @@ case "$SUBCOMMAND" in
   # ── finish: promote canary to stable, retire the old stable ───────────────
   finish)
     log "Finishing canary rollout → promoting to stable"
+
+    if [[ -z "$FINAL_REPLICAS" ]]; then
+      FINAL_REPLICAS=$(kubectl get deployment "$STABLE_DEPLOY" -n "$NAMESPACE" \
+        -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "")
+      if [[ -z "$FINAL_REPLICAS" ]]; then
+        FINAL_REPLICAS=2
+        log "WARN: could not read stable spec.replicas; defaulting FINAL_REPLICAS=$FINAL_REPLICAS"
+      else
+        log "Using stable replica count $FINAL_REPLICAS (override with --final-replicas)"
+      fi
+    fi
 
     # Copy canary image to the stable deployment
     if ! $DRY_RUN; then

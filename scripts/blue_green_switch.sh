@@ -27,7 +27,7 @@ NAMESPACE="claim-agent"
 SERVICE_NAME="claim-agent-active"
 DRY_RUN=false
 SCALE_DOWN_INACTIVE=false
-WAIT_TIMEOUT=120  # seconds to wait for the target slot to become ready
+WAIT_TIMEOUT=300  # align with CI rollout waits (kubectl rollout status --timeout)
 
 # ── Parse arguments ────────────────────────────────────────────────────────────
 TARGET_SLOT=""

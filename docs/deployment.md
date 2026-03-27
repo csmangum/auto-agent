@@ -340,6 +340,16 @@ DATABASE_URL="postgresql://..." uv run alembic upgrade head
 
 ## 6. Deployment strategies — Blue/Green and Canary
 
+### 6.0 Choosing raw Kubernetes vs Helm vs GitHub Actions
+
+Use this matrix to avoid mixing incompatible tooling (especially for blue/green).
+
+| Tooling | Blue/green topology | Canary | Rolling | Notes |
+|---------|----------------------|--------|---------|-------|
+| **Raw manifests** (`k8s/`, `k8s/blue-green/`) | Two Deployments: `claim-agent-blue` and `claim-agent-green`, plus `claim-agent-active` Service | `deployment-canary.yaml` shares the stable Service | `k8s/deployment.yaml` | Matches `.github/workflows/deploy.yml`, `scripts/blue_green_switch.sh`, and `scripts/canary_deploy.sh` resource names. |
+| **Helm** (`helm/claim-agent/`) | **One** Deployment whose `deployment-slot` label is set via `deploymentStrategy.blueGreenSlot`; traffic switch = another `helm upgrade` with the other slot | Template `deployment-canary.yaml` when `deploymentStrategy.type=Canary` | Default single Deployment | **Not the same** as raw two-Deployment blue/green. Do **not** point `blue_green_switch.sh` or the Deploy workflow at a default Helm install unless you align resource names in templates. |
+| **GitHub Actions** (`.github/workflows/deploy.yml`) | `kubectl set image deployment/claim-agent-blue` / `…-green` | `claim-agent` + `claim-agent-canary` | `deployment/claim-agent` | Designed for clusters created from **raw** `k8s/` YAML (or equivalent names). |
+
 The default deployment strategy is `RollingUpdate` (zero-downtime, in-place). For production workloads that require a safe rollback mechanism or incremental traffic shifting, two additional strategies are provided:
 
 | Strategy | Files | When to use |
@@ -348,7 +358,7 @@ The default deployment strategy is `RollingUpdate` (zero-downtime, in-place). Fo
 | **Canary** | `k8s/blue-green/deployment-canary.yaml`, `scripts/canary_deploy.sh` | Incremental traffic shifting to detect regressions |
 | **Rolling** | `k8s/deployment.yaml` (default) | Simple zero-downtime in-place update |
 
-All three strategies are also available in the Helm chart via `deploymentStrategy.type`.
+Rolling, canary, and a **Helm-specific** blue/green mode are available via `deploymentStrategy.type` in the Helm chart — see the matrix above before combining Helm with the shell scripts or CI workflow.
 
 ---
 
@@ -395,6 +405,8 @@ bash scripts/blue_green_switch.sh blue
 ```
 
 #### Blue/Green with Helm
+
+**Topology note:** Helm blue/green uses a **single** Deployment per release whose slot label you flip with `helm upgrade`. It does **not** create `claim-agent-blue` / `claim-agent-green` like raw manifests; use the commands below instead of `blue_green_switch.sh` unless you customize templates to match raw names.
 
 ```bash
 # Initial install — deploy the blue slot
@@ -519,6 +531,7 @@ See `.env.example` for the full list of supported environment variables. The mos
 
 ## 8. Security checklist
 
+- [ ] **Monitoring stack:** In `docker-compose.prod.yml`, Loki, Prometheus, Alertmanager, and Grafana bind to **127.0.0.1** only. Do not expose `3100`/`9090` on `0.0.0.0` without TLS and auth. Default `monitoring/loki-config.yml` has `auth_enabled: false` — acceptable on a trusted Docker network; for shared hosts, enable Loki auth or keep the port localhost-only.
 - [ ] Replace all `CHANGE_ME` placeholder values in `k8s/secret.yaml` before applying.
 - [ ] Use an external secrets manager (AWS Secrets Manager, Vault, Sealed Secrets) in production — do not commit plaintext credentials to Git.
 - [ ] Confirm NetworkPolicy matches your cluster (Helm defaults to `networkPolicy.enabled: true`; disable only if your CNI does not support it).

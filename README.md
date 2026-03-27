@@ -258,6 +258,9 @@ python scripts/seed_pilot_data.py
 # Custom configuration
 python scripts/seed_pilot_data.py --count 200 --months 12
 
+# Reproducible generation (e.g. demos / tests)
+python scripts/seed_pilot_data.py --seed 42
+
 # Clean reset with fresh data
 python scripts/seed_pilot_data.py --clean
 ```

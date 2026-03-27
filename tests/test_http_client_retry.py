@@ -181,6 +181,33 @@ def test_post_multipart_connect_error_exhaustion_increments_failure_count_once()
     assert client._failure_count == 1
 
 
+def test_repeated_404_responses_do_not_trip_circuit_breaker():
+    """Client errors must not increment the circuit failure counter (availability)."""
+    client = AdapterHttpClient(
+        base_url="http://example.test",
+        max_retries=0,
+        circuit_failure_threshold=3,
+    )
+    bad = MagicMock()
+    bad.status_code = 404
+    bad.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "not found",
+        request=MagicMock(),
+        response=bad,
+    )
+    mock_http = MagicMock()
+    mock_http.request = MagicMock(return_value=bad)
+
+    with patch.object(client, "_get_client", return_value=mock_http):
+        for _ in range(5):
+            with pytest.raises(httpx.HTTPStatusError):
+                client.get("/missing")
+
+    assert client._failure_count == 0
+    assert not client._circuit_open
+    assert mock_http.request.call_count == 5
+
+
 def test_post_multipart_non_retryable_404_single_attempt():
     client = AdapterHttpClient(
         base_url="http://example.test",

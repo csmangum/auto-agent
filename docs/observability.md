@@ -68,8 +68,10 @@ claim-agent container  →  Promtail (Docker socket)  →  Loki  →  Grafana (E
 ```
 
 Promtail scrapes container logs via the Docker socket, parses JSON log lines produced when
-`CLAIM_AGENT_LOG_FORMAT=json`, and ships them to Loki with labels for `level`, `claim_id`,
-`claim_type`, `correlation_id`, and `logger`.  Human-readable lines are forwarded as raw text.
+`CLAIM_AGENT_LOG_FORMAT=json`, and ships them to Loki with **low-cardinality** labels: `level`,
+`claim_type`, and `logger`. Fields such as `claim_id` and `correlation_id` stay in the JSON log
+line; filter with LogQL (e.g. ``{job="claim-agent"} | json | claim_id="CLM-12345"``). Human-readable
+lines are forwarded as raw text.
 
 ### Querying logs in Grafana
 
@@ -85,8 +87,9 @@ Promtail scrapes container logs via the Docker socket, parses JSON log lines pro
 | `{job="claim-agent"} \| json \| claim_type="fraud"` | All fraud-type claims |
 | `{job="claim-agent"} \|= "escalat"` | Escalation events |
 
-Set `CLAIM_AGENT_LOG_FORMAT=json` (in `.env` or `docker-compose.yml`) to unlock label-based
-filtering in Loki; human-readable format still works but label extraction is skipped.
+Set `CLAIM_AGENT_LOG_FORMAT=json` (in `.env` or `docker-compose.yml`) so Promtail can parse lines
+and apply the labels above; use ``| json`` in LogQL for claim-scoped fields. Human-readable format
+still works but structured parsing is skipped.
 
 ### Log retention
 
