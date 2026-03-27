@@ -29,6 +29,7 @@ flowchart LR
 
 ### Reference
 
+- **[API Integration Guide](api-integration-guide.md)** - Authentication, common flows, and curl examples for external integrators
 - **[Tools](tools.md)** - Complete tool reference
 - **[Webhooks](webhooks.md)** - Outbound webhooks for status changes and repair authorization
 - **[Adapters](adapters.md)** - Pluggable external-system integrations (policy, valuation, repair shops, parts, SIU)
