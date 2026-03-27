@@ -59,17 +59,22 @@ def client():
 
 @pytest.fixture
 def mock_workflow(monkeypatch):
-    """Patch run_claim_workflow in claims_workflow to avoid real LLM calls."""
+    """Patch run_claim_workflow in route and helper modules to avoid real LLM calls."""
     mock_result = {
         "claim_id": "CLM-WF-MOCK",
         "claim_type": "new",
         "status": "open",
         "summary": "Workflow mocked.",
     }
+    import claim_agent.api.routes._claims_helpers as helpers_mod
     import claim_agent.api.routes.claims_workflow as wf_mod
     import claim_agent.storage.factory as factory_mod
 
-    monkeypatch.setattr(wf_mod, "run_claim_workflow", lambda *a, **kw: mock_result)
+    def _mock_run(*_a, **_kw):
+        return mock_result
+
+    monkeypatch.setattr(wf_mod, "run_claim_workflow", _mock_run)
+    monkeypatch.setattr(helpers_mod, "run_claim_workflow", _mock_run)
     monkeypatch.setattr(factory_mod, "_storage_instance", None)
     return mock_result
 
@@ -275,11 +280,14 @@ class TestReprocessClaim:
     @pytest.fixture(autouse=True)
     def _mock_wf(self, monkeypatch):
         """Patch run_claim_workflow so reprocess tests never hit a real LLM."""
+        import claim_agent.api.routes._claims_helpers as helpers_mod
         import claim_agent.api.routes.claims_workflow as wf_mod
 
-        monkeypatch.setattr(
-            wf_mod, "run_claim_workflow", lambda *a, **kw: {"claim_id": "CLM-TEST001"}
-        )
+        def _mock_reprocess(*_a, **_kw):
+            return {"claim_id": "CLM-TEST001"}
+
+        monkeypatch.setattr(wf_mod, "run_claim_workflow", _mock_reprocess)
+        monkeypatch.setattr(helpers_mod, "run_claim_workflow", _mock_reprocess)
 
     def test_reprocess_existing_claim_returns_200(self, client):
         """Supervisor can reprocess an existing claim."""
