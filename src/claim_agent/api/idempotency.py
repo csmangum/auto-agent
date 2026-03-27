@@ -222,6 +222,7 @@ def get_idempotency_key_and_cached(
         headers = (
             {"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER} if status == 503 else None
         )
+        headers = {"Retry-After": "60"} if status == 503 else None
         return scoped_key, JSONResponse(status_code=status, content=body, headers=headers)
     if result == "in_progress":
         return scoped_key, JSONResponse(
