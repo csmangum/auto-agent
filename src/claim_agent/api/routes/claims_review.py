@@ -1,7 +1,6 @@
 """Review workflow routes for claims: assign, acknowledge, approve, reject, request-info, escalate, review."""
 
 import asyncio
-import logging
 import math
 from typing import Literal, Optional
 
@@ -18,14 +17,13 @@ from claim_agent.db.constants import STATUS_NEEDS_REVIEW
 from claim_agent.exceptions import ClaimNotFoundError
 from claim_agent.models.claim import ClaimInput
 from claim_agent.utils.sanitization import MAX_PAYOUT
+from claim_agent.workflow.claim_review_orchestrator import run_claim_review as run_claim_review_workflow
 from claim_agent.workflow.handback_orchestrator import run_handback_workflow
 
 from claim_agent.api.routes._claims_helpers import (
     get_approve_lock as _get_approve_lock,
     get_claim_context,
 )
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["claims"])
 
@@ -261,14 +259,12 @@ async def run_claim_review(
     Returns a ClaimReviewReport with issues, compliance_checks, and recommendations.
     The report is persisted to the audit log.
     """
-    from claim_agent.workflow.claim_review_orchestrator import run_claim_review as _run_claim_review
-
     if ctx.repo.get_claim(claim_id) is None:
         raise HTTPException(status_code=404, detail=f"Claim not found: {claim_id}")
 
     actor_id = auth.identity if auth.identity != "anonymous" else "claim_review_crew"
     report = await asyncio.to_thread(
-        _run_claim_review,
+        run_claim_review_workflow,
         claim_id,
         actor_id=actor_id,
         ctx=ctx,

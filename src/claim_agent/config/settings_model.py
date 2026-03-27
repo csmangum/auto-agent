@@ -17,6 +17,8 @@ from typing import Any, Literal
 from pydantic import AliasChoices, Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from claim_agent.config import notification_template_defaults as _tmpl_defaults
+
 _log = logging.getLogger(__name__)
 
 
@@ -413,29 +415,17 @@ class NotificationConfig(BaseSettings):
     #   {claim_id}  — the claim identifier
     # OTP templates additionally support: {otp}, {ttl_minutes}, {verification_id}
     # ---------------------------------------------------------------------------
-    tmpl_receipt_acknowledged_subject: str = "Claim {claim_id} acknowledgment"
-    tmpl_receipt_acknowledged_body: str = (
-        "We received and acknowledged your claim {claim_id}."
-    )
-    tmpl_denial_letter_subject: str = "Claim {claim_id} denial letter"
-    tmpl_denial_letter_body: str = (
-        "Your claim {claim_id} has been denied."
-        " Appeal rights are included in your denial letter."
-    )
-    tmpl_follow_up_subject: str = "Claim {claim_id} follow-up"
-    tmpl_follow_up_body: str = "An update is available for your claim {claim_id}."
-    tmpl_generic_subject: str = "Claim {claim_id} update"
-    tmpl_generic_body: str = "An update is available for your claim {claim_id}."
-    tmpl_otp_email_subject: str = "Your DSAR verification code"
-    tmpl_otp_email_body: str = (
-        "Your one-time verification code is: {otp}\n\n"
-        "This code expires in {ttl_minutes} minutes. "
-        "Do not share it with anyone.\n\n"
-        "Reference: {verification_id}"
-    )
-    tmpl_otp_sms_body: str = (
-        "Your DSAR verification code: {otp}. Expires in {ttl_minutes} min."
-    )
+    tmpl_receipt_acknowledged_subject: str = _tmpl_defaults.TMPL_RECEIPT_ACKNOWLEDGED_SUBJECT
+    tmpl_receipt_acknowledged_body: str = _tmpl_defaults.TMPL_RECEIPT_ACKNOWLEDGED_BODY
+    tmpl_denial_letter_subject: str = _tmpl_defaults.TMPL_DENIAL_LETTER_SUBJECT
+    tmpl_denial_letter_body: str = _tmpl_defaults.TMPL_DENIAL_LETTER_BODY
+    tmpl_follow_up_subject: str = _tmpl_defaults.TMPL_FOLLOW_UP_SUBJECT
+    tmpl_follow_up_body: str = _tmpl_defaults.TMPL_FOLLOW_UP_BODY
+    tmpl_generic_subject: str = _tmpl_defaults.TMPL_GENERIC_SUBJECT
+    tmpl_generic_body: str = _tmpl_defaults.TMPL_GENERIC_BODY
+    tmpl_otp_email_subject: str = _tmpl_defaults.TMPL_OTP_EMAIL_SUBJECT
+    tmpl_otp_email_body: str = _tmpl_defaults.TMPL_OTP_EMAIL_BODY
+    tmpl_otp_sms_body: str = _tmpl_defaults.TMPL_OTP_SMS_BODY
 
     @field_validator("email_enabled", "sms_enabled", mode="before")
     @classmethod
