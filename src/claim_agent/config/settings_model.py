@@ -2081,6 +2081,15 @@ class ReverseImageRestConfig(_CircuitBreakerFields):
             "provider requires metadata."
         ),
     )
+    require_exif_scrub: bool = Field(
+        default=False,
+        description=(
+            "When true, block the upload if EXIF scrubbing was not successfully performed "
+            "(status is SKIPPED_UNSUPPORTED, SKIPPED_NO_PILLOW, or FAILED) and return an "
+            "empty match list instead. Default is false (warn + upload) to preserve "
+            "availability for pilots. Env: REVERSE_IMAGE_REST_REQUIRE_EXIF_SCRUB=true."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
