@@ -22,7 +22,17 @@ from claim_agent.models.document import DocumentType
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.storage.s3 import S3StorageAdapter
-from claim_agent.utils.sanitization import _is_safe_attachment_url
+from claim_agent.utils.sanitization import _is_safe_attachment_url, sanitize_claim_data
+from claim_agent.db.database import get_connection, row_to_dict
+from claim_agent.db.document_repository import DocumentRepository
+from claim_agent.models.claim import Attachment, ClaimInput
+from claim_agent.models.document import DocumentRequestStatus
+from claim_agent.utils import attachment_type_to_document_type, infer_attachment_type
+from claim_agent.db.constants import STATUS_PENDING, STATUS_PROCESSING
+from claim_agent.workflow.helpers import WORKFLOW_STAGES
+from fastapi import HTTPException, UploadFile
+from pydantic import ValidationError
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +48,17 @@ STREAM_POLL_INTERVAL = 1.0
 STREAM_MAX_DURATION = 300
 
 PRIORITY_VALUES = ("critical", "high", "medium", "low")
+
+ALLOWED_SORT_FIELDS = frozenset({
+    "created_at",
+    "updated_at",
+    "incident_date",
+    "estimated_damage",
+    "payout_amount",
+    "status",
+    "claim_type",
+    "policy_number",
+})
 
 background_tasks: set[asyncio.Task] = set()
 background_tasks_lock = asyncio.Lock()
@@ -282,3 +303,273 @@ def resolve_attachment_urls(
         )
 
     return claim_dict
+
+
+def get_doc_repo():
+    """Document repository with default db path."""
+    return DocumentRepository(db_path=get_db_path())
+
+
+def maybe_update_document_request_on_receipt(
+    doc_repo: DocumentRepository,
+    claim_repo,
+    claim_id: str,
+    document_type: str,
+) -> None:
+    """When a document is received, update matching pending document_request and complete linked tasks."""
+    from datetime import datetime, timezone
+    pending = doc_repo.find_pending_document_requests_for_type(claim_id, document_type)
+    if not pending:
+        return
+    req = pending[0]
+    req_id = req.get("id")
+    if not req_id:
+        return
+    doc_repo.update_document_request(
+        req_id,
+        status=DocumentRequestStatus.RECEIVED,
+        received_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+    with get_connection() as conn:
+        rows = conn.execute(
+            text("SELECT id FROM claim_tasks WHERE document_request_id = :req_id AND status NOT IN ('completed', 'cancelled')"),
+            {"req_id": req_id},
+        ).fetchall()
+        for row in rows:
+            task_id = row_to_dict(row)["id"]
+            claim_repo.update_task(task_id, status="completed", resolution_notes="Document received")
+
+
+def sanitize_incident_data(incident_dict: dict) -> dict:
+    """Sanitize incident input data to prevent prompt injection and abuse."""
+    sanitized: dict[str, Any] = {}
+    
+    for key, value in incident_dict.items():
+        if key == "incident_description":
+            sanitized[key] = sanitize_claim_data({"incident_description": value}).get("incident_description", "")
+        elif key == "loss_state":
+            sanitized[key] = sanitize_claim_data({"loss_state": value}).get("loss_state")
+        elif key == "vehicles":
+            if isinstance(value, list):
+                sanitized_vehicles = []
+                for vehicle in value:
+                    if isinstance(vehicle, dict):
+                        vehicle_claim_dict = {
+                            "policy_number": vehicle.get("policy_number"),
+                            "vin": vehicle.get("vin"),
+                            "vehicle_year": vehicle.get("vehicle_year"),
+                            "vehicle_make": vehicle.get("vehicle_make"),
+                            "vehicle_model": vehicle.get("vehicle_model"),
+                            "damage_description": vehicle.get("damage_description"),
+                            "estimated_damage": vehicle.get("estimated_damage"),
+                            "attachments": vehicle.get("attachments", []),
+                            "loss_state": vehicle.get("loss_state"),
+                            "parties": vehicle.get("parties", []),
+                        }
+                        sanitized_vehicle_dict = sanitize_claim_data(vehicle_claim_dict)
+                        sanitized_vehicles.append(sanitized_vehicle_dict)
+                sanitized[key] = sanitized_vehicles
+            else:
+                sanitized[key] = []
+        else:
+            sanitized[key] = value
+    
+    return sanitized
+
+
+async def process_claim_with_attachments(
+    claim: str | ClaimInput,
+    files: list[UploadFile] | None,
+    actor_id: str,
+    *,
+    ctx: ClaimContext,
+) -> tuple[str, dict]:
+    """Shared helper for claim creation and attachment handling.
+    
+    Returns: tuple of (claim_id, claim_data_with_attachments)
+    """
+    import json
+    
+    if isinstance(claim, ClaimInput):
+        claim_data = claim.model_dump()
+    else:
+        try:
+            claim_data = json.loads(claim)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid claim JSON: {e}") from e
+
+    sanitized = sanitize_claim_data(claim_data)
+    try:
+        claim_input = ClaimInput.model_validate(sanitized)
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid claim data: {e}") from e
+
+    repo = ctx.repo
+
+    buffered_files: list[tuple[str, bytes, str | None]] = []
+    if files:
+        for f in files:
+            if not f.filename:
+                continue
+            chunks: list[bytes] = []
+            total_size = 0
+            chunk_size = 1024 * 1024
+            while True:
+                chunk = await f.read(chunk_size)
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                if total_size > max_upload_file_size_bytes():
+                    max_mb = get_settings().max_upload_file_size_mb
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(
+                            f"File '{f.filename}' exceeds the maximum upload size of {max_mb} MB."
+                        ),
+                    )
+                chunks.append(chunk)
+            buffered_files.append((f.filename, b"".join(chunks), f.content_type))
+
+    claim_id = repo.create_claim(claim_input, actor_id=actor_id)
+
+    all_attachments = list(claim_input.attachments)
+    doc_repo = DocumentRepository(db_path=get_db_path())
+    if buffered_files:
+        storage = get_storage_adapter()
+        for filename, content, content_type in buffered_files:
+            stored_key = storage.save(
+                claim_id=claim_id,
+                filename=filename,
+                content=content,
+                content_type=content_type,
+            )
+            url = storage.get_url(claim_id, stored_key)
+            if isinstance(storage, S3StorageAdapter):
+                repo.insert_document_accessed_audit(
+                    claim_id,
+                    storage_key=stored_key,
+                    actor_id=actor_id,
+                    channel="adjuster_api",
+                )
+            atype = infer_attachment_type(filename)
+            all_attachments.append(
+                Attachment(url=url, type=atype, description=f"Uploaded: {filename}")
+            )
+            doc_type = attachment_type_to_document_type(atype)
+            doc_repo.add_document(
+                claim_id,
+                stored_key,
+                document_type=doc_type,
+                received_from="claimant",
+            )
+            maybe_update_document_request_on_receipt(doc_repo, repo, claim_id, doc_type.value)
+        if all_attachments:
+            repo.update_claim_attachments(claim_id, all_attachments, actor_id=actor_id)
+
+    claim_data_with_attachments = prepare_claim_for_workflow(
+        claim_id, sanitized, all_attachments
+    )
+    return claim_id, claim_data_with_attachments
+
+
+def prepare_claim_for_workflow(
+    claim_id: str,
+    sanitized: dict,
+    all_attachments: list,
+) -> dict:
+    """Build claim_data_with_attachments for run_claim_workflow."""
+    attachments_for_workflow = []
+    storage = get_storage_adapter()
+    for a in all_attachments:
+        url = a.url if hasattr(a, "url") else a.get("url", "")
+        if isinstance(storage, LocalStorageAdapter) and url and not url.startswith(
+            ("http://", "https://", "file://")
+        ):
+            path = storage.get_path(claim_id, url)
+            if path.exists():
+                url = f"file://{path.resolve()}"
+        att = a.model_dump(mode="json") if hasattr(a, "model_dump") else a
+        attachments_for_workflow.append({**att, "url": url})
+    return {**sanitized, "attachments": attachments_for_workflow}
+
+
+async def stream_claim_updates(claim_id: str):
+    """SSE generator: poll claim, history, workflows and yield updates."""
+    import json
+    elapsed = 0.0
+
+    def _fetch_claim_snapshot():
+        db_path = get_db_path()
+        with get_connection(db_path) as conn:
+            claim_row = conn.execute(
+                text("SELECT * FROM claims WHERE id = :claim_id"),
+                {"claim_id": claim_id},
+            ).fetchone()
+            if claim_row is None:
+                return None, None, None, None
+
+            claim_dict = row_to_dict(claim_row)
+            resolve_attachment_urls(claim_dict)
+
+            history_rows = conn.execute(
+                text("SELECT id, claim_id, action, old_status, new_status, details, actor_id, created_at "
+                     "FROM claim_audit_log WHERE claim_id = :claim_id ORDER BY id ASC"),
+                {"claim_id": claim_id},
+            ).fetchall()
+
+            wf_rows = conn.execute(
+                text("SELECT * FROM workflow_runs WHERE claim_id = :claim_id ORDER BY id ASC"),
+                {"claim_id": claim_id},
+            ).fetchall()
+
+            cp_rows = conn.execute(
+                text("""
+                SELECT stage_key FROM task_checkpoints
+                WHERE claim_id = :claim_id AND workflow_run_id = (
+                    SELECT workflow_run_id FROM task_checkpoints
+                    WHERE claim_id = :claim_id ORDER BY id DESC LIMIT 1
+                )
+                """),
+                {"claim_id": claim_id},
+            ).fetchall()
+            completed_stages = []
+            for r in cp_rows:
+                d = row_to_dict(r)
+                sk = d["stage_key"]
+                stage = sk.split(":")[0] if ":" in sk else sk
+                if stage in WORKFLOW_STAGES:
+                    completed_stages.append(sk)
+            completed_stages.sort(
+                key=lambda s: (
+                    WORKFLOW_STAGES.index(stg)
+                    if (stg := (s.split(":")[0] if ":" in s else s)) in WORKFLOW_STAGES
+                    else len(WORKFLOW_STAGES)
+                )
+            )
+
+        return claim_dict, history_rows, wf_rows, completed_stages
+
+    while elapsed < STREAM_MAX_DURATION:
+        result = await asyncio.to_thread(_fetch_claim_snapshot)
+        claim_dict, history_rows, wf_rows, completed_stages = result
+        if claim_dict is None:
+            yield f"data: {json.dumps({'error': 'Claim not found'})}\n\n"
+            return
+
+        payload = {
+            "claim": claim_dict,
+            "history": [row_to_dict(r) for r in history_rows],
+            "workflows": [row_to_dict(r) for r in wf_rows],
+            "progress": completed_stages or [],
+        }
+        yield f"data: {json.dumps(payload)}\n\n"
+
+        status = claim_dict.get("status") or ""
+        if status not in (STATUS_PENDING, STATUS_PROCESSING):
+            yield f"data: {json.dumps({'done': True, 'status': status})}\n\n"
+            return
+
+        await asyncio.sleep(STREAM_POLL_INTERVAL)
+        elapsed += STREAM_POLL_INTERVAL
+
+    yield f"data: {json.dumps({'error': 'Stream timeout', 'elapsed': elapsed})}\n\n"
