@@ -163,6 +163,10 @@ The server exposes Prometheus-format metrics at `GET /metrics` (no auth required
 | `llm_tokens_total` | Counter | LLM tokens used (labels: `type=input|output`) |
 | `claims_in_progress` | Gauge | Claims currently being processed |
 | `review_queue_size` | Gauge | Claims in review queue (needs_review) |
+| `adapter_http_requests_total` | Counter | Outbound REST adapter HTTP calls (one sample per **logical** request after retries). Labels: `adapter` (fixed name, e.g. `policy`, `valuation_ccc`, `state_bureau_CA`), `method` (`GET`, `POST`, …), `status_class` (`2xx`, `4xx`, `5xx`, `error`, `circuit_open`). **No URLs or secrets in labels.** |
+| `adapter_http_request_duration_seconds` | Histogram | Wall time per logical adapter HTTP request (includes retry wait). Same labels as above. |
+
+**On-call / dashboards:** scrape `GET /metrics` and alert or graph on `rate(adapter_http_requests_total{status_class=~"5xx|error|circuit_open"}[5m])` by `adapter`, or on histogram quantiles for latency. LangSmith / LiteLLM tracing covers **LLM** calls only; outbound vendor REST traffic is visible via these metrics and structured logs from each adapter.
 
 When the database is unreachable, `claims_in_progress` and `review_queue_size` are set to `-1` to indicate unknown/error.
 

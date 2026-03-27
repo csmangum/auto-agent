@@ -54,6 +54,7 @@ class RestStateBureauAdapter(StateBureauAdapter):
                 timeout=self._timeout,
                 circuit_failure_threshold=self._circuit_failure_threshold,
                 circuit_recovery_timeout=self._circuit_recovery_timeout,
+                adapter_name=f"state_bureau_{state_code}",
             )
             self._clients[state_code] = client
         return client
