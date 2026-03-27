@@ -1,3 +1,4 @@
+{{- if not (and (eq .Values.deploymentStrategy.type "BlueGreen") .Values.deploymentStrategy.blueGreen.dualDeployment) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,10 +14,11 @@ spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
-  # BlueGreen: do not put deployment-slot in the selector — it is immutable on
-  # Deployment. Slot is only on pod labels so helm upgrade can change the slot
-  # without failing; full blue+green (two live versions) uses k8s/blue-green/
-  # or two chart releases with distinct slot values.
+  # BlueGreen (single-Deployment mode): do not put deployment-slot in the
+  # selector — it is immutable on Deployment. Slot is only on pod labels so
+  # helm upgrade can change the slot without failing.
+  # For the two-Deployment mode set deploymentStrategy.blueGreen.dualDeployment=true;
+  # that renders deployment-blue-green.yaml instead of this template.
   selector:
     matchLabels:
       {{- include "claim-agent.selectorLabels" . | nindent 6 }}
@@ -131,3 +133,4 @@ spec:
               {{- include "claim-agent.selectorLabels" $ | nindent 14 }}
         {{- end }}
       {{- end }}
+{{- end }}

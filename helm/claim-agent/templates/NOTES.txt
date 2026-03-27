@@ -4,6 +4,24 @@ Do not also apply the flat manifests under `k8s/` into the same namespace — us
 
 Release: {{ .Release.Name }}  Namespace: {{ .Release.Namespace }}
 
+{{- if and (eq .Values.deploymentStrategy.type "BlueGreen") .Values.deploymentStrategy.blueGreen.dualDeployment }}
+
+Blue/Green (dual-Deployment mode):
+- Active Service: {{ include "claim-agent.fullname" . }}-active (initial slot: {{ .Values.deploymentStrategy.blueGreen.initialSlot }})
+- Blue Deployment:  {{ include "claim-agent.fullname" . }}-blue
+- Green Deployment: {{ include "claim-agent.fullname" . }}-green
+- Config: ConfigMap `{{ include "claim-agent.fullname" . }}-config`
+- Secrets: Secret `{{ include "claim-agent.secretName" . }}`{{ if .Values.existingSecret }} (existingSecret){{ end }}
+
+Switch the active slot (no Helm upgrade required):
+  bash scripts/blue_green_switch.sh green -n {{ .Release.Namespace }}
+
+Health check on the active slot (from inside the cluster):
+  kubectl run curl --rm -it --restart=Never --image=curlimages/curl -- \
+    curl -sS http://{{ include "claim-agent.fullname" . }}-active.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}/health
+
+{{- else }}
+
 - Service: {{ include "claim-agent.fullname" . }} ({{ .Values.service.type }})
 - Config: ConfigMap `{{ include "claim-agent.fullname" . }}-config` (includes CORS_ORIGINS)
 - Secrets: Secret `{{ include "claim-agent.secretName" . }}`{{ if .Values.existingSecret }} (existingSecret){{ end }}
@@ -22,3 +40,4 @@ Then open http://127.0.0.1:8080/health
 
 If you use existingSecret, run a rollout restart after the external secret changes:
   kubectl rollout restart deployment/{{ include "claim-agent.fullname" . }} -n {{ .Release.Namespace }}
+{{- end }}

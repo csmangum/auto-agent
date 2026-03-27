@@ -8,11 +8,17 @@ replicaCount: 2
 # Controls how new versions are rolled out.
 #
 # type: RollingUpdate  — default; gradually replaces old pods (zero-downtime).
-# type: BlueGreen      — pod template gets deployment-slot (not in Deployment
-#                        selector, so helm upgrade can change slot). Two live
-#                        versions + traffic switch: use k8s/blue-green/ and
-#                        scripts/blue_green_switch.sh, or two releases with
-#                        different blueGreenSlot / fullnameOverride.
+# type: BlueGreen      — two modes available (see blueGreen below):
+#                          dualDeployment: false (default) — single Deployment
+#                            whose deployment-slot pod label is toggled via
+#                            helm upgrade; traffic switch is automatic.
+#                          dualDeployment: true — two separate Deployments
+#                            (<fullname>-blue / <fullname>-green) plus a
+#                            <fullname>-active Service, matching the topology of
+#                            k8s/blue-green/ and compatible with
+#                            scripts/blue_green_switch.sh and
+#                            .github/workflows/deploy.yml (when release name is
+#                            "claim-agent").
 # type: Canary         — runs a small canary Deployment next to the stable one;
 #                        traffic weight is proportional to replica counts.
 #                        Use scripts/canary_deploy.sh to manage the rollout.
@@ -22,8 +28,25 @@ deploymentStrategy:
   rollingUpdate:
     maxSurge: 1
     maxUnavailable: 0
-  # -- Active slot for BlueGreen strategy (blue or green).
+  # -- Active slot for the single-Deployment BlueGreen mode (blue or green).
+  # Ignored when blueGreen.dualDeployment is true.
   blueGreenSlot: blue
+  # -- Two-Deployment blue/green options (type: BlueGreen only).
+  blueGreen:
+    # -- When true, render two named Deployments (<fullname>-blue /
+    # <fullname>-green) and a <fullname>-active Service instead of the default
+    # single-Deployment approach. This matches the raw k8s/blue-green/ topology
+    # and is compatible with scripts/blue_green_switch.sh and
+    # .github/workflows/deploy.yml when the Helm release name is "claim-agent".
+    # HPA is disabled in this mode; scale each slot via replicasPerSlot.
+    dualDeployment: false
+    # -- Initial active slot (blue | green). Sets the <fullname>-active Service
+    # selector and annotation. Switch slots via scripts/blue_green_switch.sh or
+    # by patching the Service selector with kubectl.
+    initialSlot: blue
+    # -- Number of replicas for each slot (blue and green). Replaces replicaCount
+    # and autoscaling when dualDeployment is true.
+    replicasPerSlot: 2
   canary:
     # -- Number of canary replicas (determines traffic percentage).
     replicas: 1

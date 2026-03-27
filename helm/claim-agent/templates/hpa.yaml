@@ -1,4 +1,4 @@
-{{- if .Values.autoscaling.enabled -}}
+{{- if and .Values.autoscaling.enabled (not (and (eq .Values.deploymentStrategy.type "BlueGreen") .Values.deploymentStrategy.blueGreen.dualDeployment)) -}}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
