@@ -95,7 +95,7 @@ class TestTracing:
             reload_settings()
             config = TracingConfig.from_env()
             assert config.langsmith_enabled is True
-            assert config.langsmith_api_key == "test-key"
+            assert config.langsmith_api_key.get_secret_value() == "test-key"
             assert config.langsmith_project == "test-project"
 
     def test_tracing_callback_log_pre_api_call(self):
