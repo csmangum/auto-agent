@@ -79,12 +79,7 @@ def pg_seeded(postgres_url, _run_migrations):
     claim_id = "CLM-PGTEST001"
     with get_connection() as conn:
         # Clear token tables so each test gets a clean slate.
-        for table in (
-            "claim_access_tokens",
-            "repair_shop_access_tokens",
-            "third_party_access_tokens",
-            "external_portal_tokens",
-        ):
+        for table in _PORTAL_TOKEN_TABLES:
             conn.execute(text(f"DELETE FROM {table}"))  # noqa: S608
 
         # Ensure the test claim exists (upsert-style to survive concurrent test runs).
@@ -122,11 +117,27 @@ def pg_seeded(postgres_url, _run_migrations):
 # PostgreSQL-compatible helpers (use SQLAlchemy, not sqlite3)
 # ---------------------------------------------------------------------------
 
+_PORTAL_TOKEN_TABLES: frozenset[str] = frozenset(
+    {
+        "claim_access_tokens",
+        "repair_shop_access_tokens",
+        "third_party_access_tokens",
+        "external_portal_tokens",
+    }
+)
+
+
+def _validate_table(table: str) -> None:
+    """Raise ValueError if *table* is not a known portal token table."""
+    if table not in _PORTAL_TOKEN_TABLES:
+        raise ValueError(f"Unknown portal token table: {table!r}")
+
 
 def _pg_set_last_used(table: str, days_ago: float) -> None:
     """Set ``last_used_at`` to *days_ago* days before now via SQLAlchemy."""
     from claim_agent.db.database import get_connection
 
+    _validate_table(table)
     ts = datetime.now(timezone.utc) - timedelta(days=days_ago)
     with get_connection() as conn:
         conn.execute(
@@ -139,6 +150,7 @@ def _pg_set_last_used_raw(table: str, value: str) -> None:
     """Set ``last_used_at`` to an arbitrary string (for malformed-value tests)."""
     from claim_agent.db.database import get_connection
 
+    _validate_table(table)
     with get_connection() as conn:
         conn.execute(
             text(f"UPDATE {table} SET last_used_at = :v"),  # noqa: S608
@@ -150,6 +162,7 @@ def _pg_get_last_used(table: str) -> datetime | None:
     """Fetch ``last_used_at`` from *table* (expects a single row)."""
     from claim_agent.db.database import get_connection
 
+    _validate_table(table)
     with get_connection() as conn:
         row = conn.execute(
             text(f"SELECT last_used_at FROM {table}")  # noqa: S608
