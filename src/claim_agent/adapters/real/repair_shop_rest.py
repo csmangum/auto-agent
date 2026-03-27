@@ -65,6 +65,7 @@ class RestRepairShopAdapter(RepairShopAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name="repair_shop",
         )
         self._shops_path = shops_path
         self._shop_path_template = shop_path_template.strip()

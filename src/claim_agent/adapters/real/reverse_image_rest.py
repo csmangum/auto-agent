@@ -68,6 +68,7 @@ class RestReverseImageAdapter(ReverseImageAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name="reverse_image",
         )
         self._match_path = match_path
         self._response_key = (response_key or "").strip() or None

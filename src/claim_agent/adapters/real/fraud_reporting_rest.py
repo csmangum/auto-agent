@@ -50,6 +50,7 @@ class RestFraudReportingAdapter(FraudReportingAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name="fraud_reporting",
         )
         self._state_bureau_path = state_bureau_path
         self._nicb_path = nicb_path

@@ -61,6 +61,7 @@ class RestCMSReportingAdapter(CMSReportingAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name="cms",
         )
         self._evaluate_path = evaluate_path
         self._response_key = (response_key or "").strip() or None

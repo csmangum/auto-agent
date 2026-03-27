@@ -69,6 +69,7 @@ class RestERPAdapter(ERPAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name="erp",
         )
         self._shop_id_map: dict[str, str] = dict(shop_id_map or {})
         self._assignment_path = assignment_path

@@ -59,6 +59,7 @@ class RestNMVTISAdapter(NMVTISAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name="nmvtis",
         )
         self._report_path = report_path
         self._response_key = (response_key or "").strip() or None

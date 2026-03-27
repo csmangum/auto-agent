@@ -140,6 +140,7 @@ class RestValuationAdapter(ValuationAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name=f"valuation_{(provider or 'unknown').strip().lower() or 'unknown'}",
         )
         _required = ("{vin}", "{year}")
         for _placeholder in _required:
