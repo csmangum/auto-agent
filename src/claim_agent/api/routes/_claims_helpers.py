@@ -1,7 +1,7 @@
 """Shared helper functions and constants for claims routes.
 
-HTTP ``Retry-After`` hints: ``CLAIM_ALREADY_PROCESSING_RETRY_AFTER`` (409),
-``BACKGROUND_QUEUE_FULL_RETRY_AFTER`` (503 when the background workflow queue is full).
+HTTP ``Retry-After`` hints live in ``claim_agent.api.http_constants`` and are
+re-exported here for route modules.
 """
 
 import asyncio
@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import text
 
 from claim_agent.api.auth import AuthContext
+from claim_agent.api.http_constants import CLAIM_ALREADY_PROCESSING_RETRY_AFTER
 from claim_agent.api.claim_access import adjuster_identity_scopes_assignee
 from claim_agent.config import get_settings
 from claim_agent.context import ClaimContext
@@ -41,9 +42,6 @@ from claim_agent.utils.sanitization import is_safe_attachment_url, sanitize_clai
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
 
 logger = logging.getLogger(__name__)
-
-CLAIM_ALREADY_PROCESSING_RETRY_AFTER = "30"
-BACKGROUND_QUEUE_FULL_RETRY_AFTER = "60"
 
 ALLOWED_DOCUMENT_EXTENSIONS = frozenset(
     {"pdf", "jpg", "jpeg", "png", "gif", "webp", "heic", "doc", "docx", "xls", "xlsx"}

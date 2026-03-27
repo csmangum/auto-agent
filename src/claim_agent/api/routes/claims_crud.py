@@ -13,6 +13,7 @@ from claim_agent.api.claim_access import (
     ensure_claim_access_for_adjuster,
 )
 from claim_agent.api.deps import RequireAdjuster
+from claim_agent.api.http_constants import BACKGROUND_QUEUE_FULL_RETRY_AFTER
 from claim_agent.api.idempotency import (
     get_idempotency_key_and_cached,
     release_idempotency_on_error,
@@ -28,7 +29,6 @@ from claim_agent.models.claim import ClaimInput
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
 from claim_agent.api.routes._claims_helpers import (
     ALLOWED_SORT_FIELDS as _ALLOWED_SORT_FIELDS,
-    BACKGROUND_QUEUE_FULL_RETRY_AFTER,
     PRIORITY_VALUES,
     adjuster_scope_params as _adjuster_scope_params,
     apply_adjuster_claim_filter as _apply_adjuster_claim_filter,

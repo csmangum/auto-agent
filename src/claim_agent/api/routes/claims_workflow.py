@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.claim_access import ensure_claim_access_for_adjuster
 from claim_agent.api.deps import RequireAdjuster, RequireSupervisor
+from claim_agent.api.http_constants import BACKGROUND_QUEUE_FULL_RETRY_AFTER
 from claim_agent.api.idempotency import (
     get_idempotency_key_and_cached,
     release_idempotency_on_error,
@@ -23,7 +24,6 @@ from claim_agent.exceptions import ClaimAlreadyProcessingError
 from claim_agent.models.claim import ClaimInput
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
 from claim_agent.api.routes._claims_helpers import (
-    BACKGROUND_QUEUE_FULL_RETRY_AFTER,
     get_claim_context,
     http_already_processing as _http_already_processing,
     process_claim_with_attachments as _process_claim_with_attachments,

@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.deps import RequireAdjuster
+from claim_agent.api.http_constants import BACKGROUND_QUEUE_FULL_RETRY_AFTER
 from claim_agent.api.idempotency import (
     get_idempotency_key_and_cached,
     release_idempotency_on_error,
@@ -18,7 +19,6 @@ from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.exceptions import ClaimAlreadyProcessingError, InvalidClaimTransitionError
 from claim_agent.api.routes._claims_helpers import (
-    BACKGROUND_QUEUE_FULL_RETRY_AFTER,
     GenerateClaimRequest,
     GenerateIncidentDetailsRequest,
     get_claim_context,

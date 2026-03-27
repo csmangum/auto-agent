@@ -269,15 +269,32 @@ jobs:
       contents: read
     strategy:
       matrix:
-        strategy: [RollingUpdate, BlueGreen, Canary]
+        include:
+          - case: RollingUpdate
+            strategy: RollingUpdate
+            dualDeployment: "false"
+          - case: BlueGreen-single
+            strategy: BlueGreen
+            dualDeployment: "false"
+          - case: BlueGreen-dual
+            strategy: BlueGreen
+            dualDeployment: "true"
+          - case: Canary
+            strategy: Canary
+            dualDeployment: "false"
     steps:
       - uses: actions/checkout@v4
 
-      - name: Smoke-render Helm templates (strategy=${{ matrix.strategy }})
+      - name: Smoke-render Helm templates (${{ matrix.case }})
         run: |
+          EXTRA=()
+          if [ "${{ matrix.dualDeployment }}" = "true" ]; then
+            EXTRA+=(--set deploymentStrategy.blueGreen.dualDeployment=true)
+          fi
           helm template claim-agent helm/claim-agent \
             -f helm/claim-agent/ci-values.yaml \
             --set deploymentStrategy.type=${{ matrix.strategy }} \
+            "${EXTRA[@]}" \
             > /dev/null
 
   frontend:
