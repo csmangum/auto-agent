@@ -875,13 +875,13 @@ class TestReviewQueue:
 
     def test_approve_reprocesses_claim(self, client, monkeypatch):
         """Supervisor can approve claim and re-run workflow."""
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_review as claims_review_mod
 
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         reload_settings()
         mock_result = {"claim_id": "CLM-TEST004", "status": "open", "claim_type": "new"}
-        monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: mock_result)
+        monkeypatch.setattr(claims_review_mod, "run_handback_workflow", lambda *a, **kw: mock_result)
         resp = client.post(
             "/api/v1/claims/CLM-TEST004/review/approve", headers=_auth_headers("sk-sup")
         )
@@ -915,12 +915,12 @@ class TestReviewQueue:
 
     def test_approve_invalid_payout_returns_422(self, client, monkeypatch):
         """ReviewerDecisionBody rejects invalid confirmed_payout (negative, etc)."""
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes.claims_review as claims_review_mod
 
         monkeypatch.setenv("API_KEYS", "sk-sup:supervisor")
         monkeypatch.delenv("CLAIMS_API_KEY", raising=False)
         reload_settings()
-        monkeypatch.setattr(claims_mod, "run_handback_workflow", lambda *a, **kw: {})
+        monkeypatch.setattr(claims_review_mod, "run_handback_workflow", lambda *a, **kw: {})
         resp = client.post(
             "/api/v1/claims/CLM-TEST004/review/approve",
             json={"reviewer_decision": {"confirmed_payout": -100}},
