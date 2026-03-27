@@ -33,11 +33,13 @@ from claim_agent.api.rate_limit import get_client_ip, is_auth_rate_limited, is_r
 from claim_agent.api.routes.claims import router as claims_router
 from claim_agent.api.routes.claims_audit import router as claims_audit_router
 from claim_agent.api.routes.claims_crud import router as claims_crud_router
+from claim_agent.api.routes.claims_financial import router as claims_financial_router
 from claim_agent.api.routes.claims_parties import router as claims_parties_router
 from claim_agent.api.routes.claims_documents import router as claims_documents_router
 from claim_agent.api.routes.claims_workflow import router as claims_workflow_router
 from claim_agent.api.routes.claims_review import router as claims_review_router
 from claim_agent.api.routes.claims_specialized import router as claims_specialized_router
+from claim_agent.api.routes.claims_incidents import router as claims_incidents_router
 from claim_agent.api.routes.compliance import router as compliance_router
 from claim_agent.api.routes._claims_helpers import (
     background_tasks as claim_background_tasks,
@@ -804,10 +806,12 @@ app.include_router(claims_crud_router, prefix="/api/v1")
 app.include_router(claims_audit_router, prefix="/api/v1")
 app.include_router(claims_review_router, prefix="/api/v1")
 app.include_router(claims_router, prefix="/api/v1")
+app.include_router(claims_financial_router, prefix="/api/v1")
 app.include_router(claims_parties_router, prefix="/api/v1")
 app.include_router(claims_documents_router, prefix="/api/v1")
 app.include_router(claims_workflow_router, prefix="/api/v1")
 app.include_router(claims_specialized_router, prefix="/api/v1")
+app.include_router(claims_incidents_router, prefix="/api/v1")
 app.include_router(compliance_router, prefix="/api/v1")
 app.include_router(metrics_router, prefix="/api/v1")
 app.include_router(docs_router, prefix="/api/v1")

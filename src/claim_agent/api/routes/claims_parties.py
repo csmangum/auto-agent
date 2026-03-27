@@ -1,6 +1,6 @@
 """Party management and portal token routes for claims."""
 
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -37,10 +37,9 @@ RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 class PartyConsentUpdate(BaseModel):
     """Request body for PATCH /claims/{claim_id}/parties/{party_id}/consent."""
 
-    consent_status: str = Field(
+    consent_status: Literal["pending", "granted", "revoked"] = Field(
         ...,
         description="Data processing consent status. Revoked excludes party PII from LLM prompts.",
-        pattern="^(pending|granted|revoked)$",
     )
 
 
