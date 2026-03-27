@@ -9,9 +9,12 @@ import os
 import tempfile
 from unittest.mock import AsyncMock, patch
 
+import pytest
+from pydantic import ValidationError
 from sqlalchemy import text
 
 from claim_agent.config import reload_settings
+from claim_agent.config.settings_model import NotificationConfig
 from claim_agent.config.settings import get_notification_config, get_webhook_config
 from tests.conftest import LogCaptureHandler
 from claim_agent.notifications.claimant import (
@@ -898,6 +901,39 @@ class TestConfigurableNotificationTemplates:
                     call_kwargs = mock_client.post.call_args[1]
                     assert call_kwargs["json"]["subject"] == "Custom subject CLM-999"
                     assert call_kwargs["json"]["content"][0]["value"] == "Custom body for CLM-999."
+
+
+class TestNotificationTemplatePlaceholderValidation:
+    """NOTIFICATION_TMPL_* strings must use only allowed str.format placeholders."""
+
+    def test_rejects_unknown_placeholder_on_claim_template(self):
+        with pytest.raises(ValidationError, match="unknown placeholder"):
+            NotificationConfig(tmpl_generic_body="Bad {typo} for {claim_id}")
+
+    def test_rejects_attribute_style_placeholder(self):
+        with pytest.raises(ValidationError, match="invalid placeholder"):
+            NotificationConfig(tmpl_generic_body="Bad {obj.attr} and {claim_id}")
+
+    def test_rejects_nested_placeholder_in_format_spec(self):
+        """Dynamic width/precision in format_spec (e.g. {claim_id:{w}}) must not bypass checks."""
+        with pytest.raises(ValidationError, match="nested or dynamic format specs"):
+            NotificationConfig(tmpl_generic_body="ID {claim_id:{width}} end")
+
+    def test_rejects_claim_id_in_otp_body(self):
+        with pytest.raises(ValidationError, match="unknown placeholder"):
+            NotificationConfig(
+                tmpl_otp_email_body="Claim {claim_id} code {otp} ttl {ttl_minutes} id {verification_id}",
+            )
+
+    def test_allows_escaped_literal_braces_with_claim_id(self):
+        cfg = NotificationConfig(
+            tmpl_generic_body="Use {{braces}} for claim {claim_id}",
+        )
+        assert "{claim_id}" in cfg.tmpl_generic_body
+
+    def test_allows_static_otp_subject_without_placeholders(self):
+        cfg = NotificationConfig(tmpl_otp_email_subject="Your verification code")
+        assert cfg.tmpl_otp_email_subject == "Your verification code"
 
 
 class TestRepositoryWebhookIntegration:

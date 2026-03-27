@@ -28,6 +28,7 @@ from claim_agent.workflow.helpers import WORKFLOW_STAGES
 import claim_agent.api.routes._claims_helpers as _claims_helpers
 from claim_agent.api.routes._claims_helpers import (
     ALLOWED_SORT_FIELDS as _ALLOWED_SORT_FIELDS,
+    BACKGROUND_QUEUE_FULL_RETRY_AFTER,
     PRIORITY_VALUES,
     adjuster_scope_params as _adjuster_scope_params,
     apply_adjuster_claim_filter as _apply_adjuster_claim_filter,
@@ -339,7 +340,7 @@ async def create_claim(
                 raise HTTPException(
                     status_code=503,
                     detail="Too many concurrent background tasks. Retry later.",
-                    headers={"Retry-After": "60"},
+                    headers={"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER},
                 )
 
         actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
@@ -356,7 +357,7 @@ async def create_claim(
                 raise HTTPException(
                     status_code=503,
                     detail="Too many concurrent background tasks. Retry later.",
-                    headers={"Retry-After": "60"},
+                    headers={"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER},
                 )
             result = {"claim_id": claim_id}
         else:

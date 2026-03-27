@@ -24,6 +24,7 @@ from claim_agent.models.claim import ClaimInput
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
 import claim_agent.api.routes._claims_helpers as _claims_helpers
 from claim_agent.api.routes._claims_helpers import (
+    BACKGROUND_QUEUE_FULL_RETRY_AFTER,
     get_claim_context,
     http_already_processing as _http_already_processing,
     process_claim_with_attachments as _process_claim_with_attachments,
@@ -66,7 +67,7 @@ async def process_claim(
                 raise HTTPException(
                     status_code=503,
                     detail="Too many concurrent background tasks. Retry later.",
-                    headers={"Retry-After": "60"},
+                    headers={"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER},
                 )
 
         actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
@@ -83,7 +84,7 @@ async def process_claim(
                 raise HTTPException(
                     status_code=503,
                     detail="Too many concurrent background tasks. Retry later.",
-                    headers={"Retry-After": "60"},
+                    headers={"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER},
                 )
             result = {"claim_id": claim_id}
         else:
@@ -125,7 +126,7 @@ async def process_claim_async(
             raise HTTPException(
                 status_code=503,
                 detail="Too many concurrent background tasks. Retry later.",
-                headers={"Retry-After": "60"},
+                headers={"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER},
             )
 
         actor_id = auth.identity if auth.identity != "anonymous" else ACTOR_WORKFLOW
@@ -140,7 +141,7 @@ async def process_claim_async(
             raise HTTPException(
                 status_code=503,
                 detail="Too many concurrent background tasks. Retry later.",
-                headers={"Retry-After": "60"},
+                headers={"Retry-After": BACKGROUND_QUEUE_FULL_RETRY_AFTER},
             )
         result = {"claim_id": claim_id}
         store_response_if_idempotent(idem_key, 200, result)
