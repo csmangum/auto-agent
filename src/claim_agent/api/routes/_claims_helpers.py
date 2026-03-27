@@ -16,7 +16,10 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import text
 
 from claim_agent.api.auth import AuthContext
-from claim_agent.api.http_constants import CLAIM_ALREADY_PROCESSING_RETRY_AFTER
+from claim_agent.api.http_constants import (
+    BACKGROUND_QUEUE_FULL_DETAIL,
+    CLAIM_ALREADY_PROCESSING_RETRY_AFTER,
+)
 from claim_agent.api.claim_access import adjuster_identity_scopes_assignee
 from claim_agent.config import get_settings
 from claim_agent.context import ClaimContext
@@ -259,6 +262,20 @@ async def background_workflow_queue_full() -> bool:
     """True when starting another background workflow would exceed the configured limit."""
     async with background_tasks_lock:
         return _background_workflow_queue_at_capacity_unlocked()
+
+
+def background_queue_full_json_body(claim_id: str, **extra: Any) -> dict[str, Any]:
+    """JSON body for HTTP 503 when the background workflow queue is at capacity.
+
+    Uses the same ``error_code`` / ``detail`` shape as :class:`claim_agent.models.error.ErrorResponse`.
+    Extra keyword arguments are merged first (e.g. generate endpoint adds ``claim`` and ``submitted``).
+    """
+    return {
+        **extra,
+        "error_code": "SERVICE_UNAVAILABLE",
+        "detail": BACKGROUND_QUEUE_FULL_DETAIL,
+        "claim_id": claim_id,
+    }
 
 
 async def try_run_workflow_background(

@@ -20,6 +20,13 @@ Health check on the active slot (from inside the cluster):
   kubectl run curl --rm -it --restart=Never --image=curlimages/curl -- \
     curl -sS http://{{ include "claim-agent.fullname" . }}-active.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}/health
 
+{{- if .Values.ingress.enabled }}
+Ingress is enabled; the chart routes to Service `{{ include "claim-agent.fullname" . }}-active`.
+{{- else }}
+For local access: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "claim-agent.fullname" . }}-active 8080:{{ .Values.service.port }}
+Then open http://127.0.0.1:8080/health
+{{- end }}
+
 {{- else }}
 
 - Service: {{ include "claim-agent.fullname" . }} ({{ .Values.service.type }})

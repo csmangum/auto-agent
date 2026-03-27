@@ -21,6 +21,7 @@ from claim_agent.exceptions import ClaimAlreadyProcessingError, InvalidClaimTran
 from claim_agent.api.routes._claims_helpers import (
     GenerateClaimRequest,
     GenerateIncidentDetailsRequest,
+    background_queue_full_json_body as _background_queue_full_json_body,
     get_claim_context,
     http_already_processing as _http_already_processing,
     process_claim_with_attachments as _process_claim_with_attachments,
@@ -90,7 +91,9 @@ async def generate_and_submit_claim(
                 ctx=ctx,
             )
             if task is None:
-                result = {"claim": claim_data, "submitted": True, "claim_id": claim_id}
+                result = _background_queue_full_json_body(
+                    claim_id, claim=claim_data, submitted=True
+                )
                 store_response_if_idempotent(idem_key, 503, result)
                 return JSONResponse(
                     status_code=503,
