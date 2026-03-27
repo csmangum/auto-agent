@@ -130,14 +130,16 @@ curl -s https://claims.example.com/api/v1/auth/me \
 
 ### 3. Portal Tokens
 
-Claim-scoped tokens for external parties who must not hold full API credentials.
+Claim-scoped tokens for external parties who must not hold full API credentials. **Issuance** is always done by an authenticated adjuster workflow (API key or JWT with role `adjuster`, `supervisor`, `admin`, or `executive`), except where noted for end-user login.
 
-| Portal | Header | Who issues it |
+| Portal | Header when calling portal routes | How the token is created |
 |---|---|---|
-| Claimant | `X-Claim-Access-Token` | Claims system (via `POST /portal/auth/issue-token`) |
-| Repair shop (per-claim) | `X-Repair-Shop-Access-Token` | Claims system |
-| Third party | `X-Third-Party-Access-Token` | Claims system |
-| Unified | `X-Portal-Token` | `POST /portal/auth/login` |
+| Claimant | `X-Claim-Access-Token` | `POST /api/v1/claims/{claim_id}/portal-token` — optional body `{"email": "...", "party_id": 123}`; response includes raw `token` once |
+| Repair shop (per-claim) | `X-Repair-Shop-Access-Token` | `POST /api/v1/claims/{claim_id}/repair-shop-portal-token` — optional `shop_id` in body |
+| Third party (TPA, etc.) | `X-Third-Party-Access-Token` | `POST /api/v1/claims/{claim_id}/third-party-portal-token` — body must include `party_id` |
+| Unified (role + scopes) | `X-Portal-Token` | `POST /api/v1/portal/auth/issue-token` (adjuster auth required) with `role`, `scopes`, and role-specific fields — returns `token` plus metadata; **or** session via `POST /api/v1/portal/auth/login` |
+
+`POST /api/v1/portal/auth/issue-token` is **not** public: it requires the same global API authentication as other protected routes, unlike most other `/portal/*` paths.
 
 Alternatively, claimants can authenticate without a token using policy/VIN identity headers:
 ```
@@ -322,16 +324,37 @@ curl -s "https://claims.example.com/api/v1/claims?status=open&sort_by=created_at
 | `offset` | integer | 0 | Pagination offset |
 | `include_archived` | boolean | false | Include archived claims |
 
+**List response shape** — the body is an object (not a bare array):
+
+```json
+{
+  "claims": [
+    {
+      "id": "CLM-11EEF959",
+      "status": "open",
+      "claim_type": "partial_loss",
+      "policy_number": "POL-001",
+      "created_at": "2025-03-15T10:00:00Z",
+      "updated_at": "2025-03-16T08:00:00Z"
+    }
+  ],
+  "total": 42,
+  "limit": 50,
+  "offset": 0
+}
+```
+
 ---
 
 ### Flow 3: Human Review (Approve / Reject)
 
 Claims with fraud indicators, high value, or low-confidence routing are placed in `needs_review`. An adjuster or supervisor must then approve, reject, or request more information.
 
-**Check the review queue:**
+**Check the review queue** (requires role `adjuster` or higher — `supervisor`, `admin`, and `executive` also qualify):
+
 ```bash
 curl -s "https://claims.example.com/api/v1/claims/review-queue" \
-  -H "X-API-Key: supervisor-key"
+  -H "X-API-Key: adjuster-key"
 ```
 
 #### Approve
@@ -450,33 +473,67 @@ curl -s "https://claims.example.com/api/v1/claims/CLM-11EEF959/payments?status=a
 
 The claimant portal uses claim-scoped tokens (or identity headers) instead of system API keys, limiting access to a single claim.
 
-#### Step 1 — Authenticate
+#### Step 1 — Issue a claimant access token (adjuster / back office)
+
+An integrator with **adjuster-or-higher** credentials creates a token for the claimant. The raw secret is returned **once**; store or deliver it securely (e.g. magic link). Optional body fields disambiguate the party when a claim has multiple contacts:
+
+| Field | Type | Description |
+|---|---|---|
+| `email` | string | Email to associate with the token |
+| `party_id` | integer | Claim party row id (claimant / policyholder) |
+
+```bash
+curl -s -X POST https://claims.example.com/api/v1/claims/CLM-11EEF959/portal-token \
+  -H "X-API-Key: your-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+**Response:**
+
+```json
+{
+  "claim_id": "CLM-11EEF959",
+  "token": "<raw-claim-access-token>"
+}
+```
+
+Tokens honor absolute expiry and an **inactivity** window: if the token is unused longer than `CLAIM_PORTAL_INACTIVITY_TIMEOUT_DAYS` (default 30), verification fails even before `expires_at`.
+
+#### Unified portal token (optional, multi-role integrations)
+
+For a single token model with explicit `role` and `scopes`, call (with adjuster auth):
+
+`POST /api/v1/portal/auth/issue-token`
 
 ```bash
 curl -s -X POST https://claims.example.com/api/v1/portal/auth/issue-token \
+  -H "X-API-Key: your-secret-key" \
   -H "Content-Type: application/json" \
   -d '{
-    "claim_id": "CLM-11EEF959",
-    "policy_number": "POL-001",
-    "vin": "1HGBH41JXMN109186"
+    "role": "claimant",
+    "scopes": ["read_claim", "upload_doc"],
+    "claim_id": "CLM-11EEF959"
   }'
 ```
 
-Returns a `portal_token` that expires after inactivity (default 30 days).
+**Response** includes `token`, `role`, `claim_id`, `shop_id` (if applicable), and `scopes`. Valid `scopes` values include: `read_claim` · `upload_doc` · `update_repair_status` · `view_estimate` · `submit_supplement` · `respond_followup`. Use header `X-Portal-Token` on unified portal routes.
 
 #### Step 2 — Fetch claim details
 
 ```bash
 curl -s https://claims.example.com/api/v1/portal/claims/CLM-11EEF959 \
-  -H "X-Claim-Access-Token: <portal_token>"
+  -H "X-Claim-Access-Token: <token>"
 ```
+
+(`<token>` is the `token` value from Step 1.)
 
 #### Step 3 — Upload a document
 
 ```bash
 curl -s -X POST \
   "https://claims.example.com/api/v1/portal/claims/CLM-11EEF959/documents?document_type=estimate" \
-  -H "X-Claim-Access-Token: <portal_token>" \
+  -H "X-Claim-Access-Token: <token>" \
   -F "file=@/path/to/repair_estimate.pdf"
 ```
 
@@ -504,7 +561,7 @@ Allowed extensions: `pdf` · `jpg` · `jpeg` · `png` · `gif` · `webp` · `hei
 
 ```bash
 curl -s -X POST https://claims.example.com/api/v1/portal/claims/CLM-11EEF959/dispute \
-  -H "X-Claim-Access-Token: <portal_token>" \
+  -H "X-Claim-Access-Token: <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "dispute_type": "valuation_disagreement",
@@ -813,6 +870,9 @@ def verify_signature(secret: str, body: bytes, header: str) -> bool:
 ```
 
 **Node.js verification example:**
+
+`timingSafeEqual` requires buffers of equal length. Compare hex strings with `hmac.compareDigest`-style logic, or decode both sides from hex into fixed-length buffers before comparing.
+
 ```js
 const crypto = require("crypto");
 
@@ -822,10 +882,10 @@ function verifySignature(secret, body, header) {
     .update(body)
     .digest("hex");
   const received = header.replace(/^sha256=/, "");
-  return crypto.timingSafeEqual(
-    Buffer.from(expected),
-    Buffer.from(received)
-  );
+  if (received.length !== expected.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(Buffer.from(expected, "utf8"), Buffer.from(received, "utf8"));
 }
 ```
 

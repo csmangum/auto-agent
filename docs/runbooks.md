@@ -31,7 +31,7 @@ This document provides step-by-step operational runbooks for the four most commo
 ```bash
 # List claims currently in 'processing' status
 curl -H "X-API-Key: $API_KEY" \
-  "https://<your-domain>/api/v1/claims?status=processing" | jq '.[] | {id, created_at, claim_type}'
+  "https://<your-domain>/api/v1/claims?status=processing" | jq '.claims[] | {id, created_at, claim_type}'
 ```
 
 **2. Check the audit trail for a specific claim:**
@@ -88,20 +88,20 @@ claim-agent reprocess <claim_id>
 
 Valid `--from-stage` values: `coverage_verification`, `economic_analysis`, `fraud_prescreening`, `duplicate_detection`, `router`, `escalation_check`, `workflow`, `task_creation`, `rental`, `liability_determination`, `settlement`, `subrogation`, `salvage`, `after_action`.
 
-#### Option B — Escalate to human review
+#### Option B — Escalate to SIU
 
-If reprocessing fails or the root cause is unclear:
+If reprocessing fails or fraud / investigation is warranted, route the claim to Special Investigations (SIU):
 
 ```bash
-# Via CLI (requires 'supervisor' role)
+# Via CLI (uses workflow actor id; ensure CLI context can access the claim DB)
 claim-agent escalate-siu <claim_id>
 
-# Or manually move to review queue via API
+# Or via API (adjuster-or-higher API key or JWT; no request body)
 curl -X POST -H "X-API-Key: $API_KEY" \
-  "https://<your-domain>/api/v1/claims/<claim_id>/escalate" \
-  -H "Content-Type: application/json" \
-  -d '{"reason": "Claim stuck in processing — manual review required"}'
+  "https://<your-domain>/api/v1/claims/<claim_id>/review/escalate-to-siu"
 ```
+
+For claims already in `needs_review`, use the review queue (`GET /api/v1/claims/review-queue`) and approve / reject / request-info endpoints instead ([Adjuster workflow](adjuster-workflow.md)).
 
 #### Option C — Restart application pods
 
@@ -119,7 +119,7 @@ After the restart, re-queue any stuck claims with `claim-agent reprocess`.
 | Condition | Action |
 |-----------|--------|
 | Single claim stuck > 10 min | Reprocess (Option A) |
-| Reprocess fails twice | Escalate to human review (Option B) |
+| Reprocess fails twice | Escalate to SIU (Option B) or use review queue if status is `needs_review` |
 | > 3 claims stuck simultaneously | Restart pods (Option C); page engineering lead |
 | All new claims stuck | Treat as LLM or database outage; follow runbooks §3 / §4 |
 
@@ -387,7 +387,7 @@ After the adapter is restored, reprocess any claims that failed during the outag
 ```bash
 # Identify failed claims within a time window via API
 curl -H "X-API-Key: $API_KEY" \
-  "https://<your-domain>/api/v1/claims?status=failed" | jq '.[] | .id' \
+  "https://<your-domain>/api/v1/claims?status=failed" | jq '.claims[] | .id' \
   | xargs -I{} claim-agent reprocess {}
 ```
 
