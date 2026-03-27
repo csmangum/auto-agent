@@ -40,6 +40,11 @@ BENCH_SUBMIT_P99_SEC: float = float(os.environ.get("BENCH_SUBMIT_P99_SEC", "5.0"
 BENCH_WARMUP: int = int(os.environ.get("BENCH_WARMUP", "2"))
 BENCH_REPS: int = int(os.environ.get("BENCH_REPS", "20"))
 
+if BENCH_WARMUP < 0:
+    raise ValueError(f"BENCH_WARMUP must be non-negative, got {BENCH_WARMUP!r}")
+if BENCH_REPS <= 0:
+    raise ValueError(f"BENCH_REPS must be positive, got {BENCH_REPS!r}")
+
 VALID_CLAIM_PAYLOAD = {
     "policy_number": "POL-BENCH-001",
     "vin": "1HGBH41JXMN109186",
@@ -65,19 +70,31 @@ def _percentile(sorted_values: list[float], pct: float) -> float:
     return sorted_values[max(0, idx)]
 
 
+def _assert_2xx(response, path: str, method: str, phase: str) -> None:
+    code = getattr(response, "status_code", None)
+    if code is None or not (200 <= code < 300):
+        raise AssertionError(
+            f"{phase.capitalize()} request to {path} via {method.upper()} failed: "
+            f"status {code!r} (expected 2xx)"
+        )
+
+
 def _run_benchmark(client, method: str, path: str, **kwargs) -> list[float]:
     """Warmup + measure *BENCH_REPS* requests.  Returns measured latencies."""
     fn = getattr(client, method)
 
     # Warmup passes — not included in measurements.
     for _ in range(BENCH_WARMUP):
-        fn(path, **kwargs)
+        response = fn(path, **kwargs)
+        _assert_2xx(response, path, method, "warmup")
 
     latencies: list[float] = []
     for _ in range(BENCH_REPS):
         t0 = time.perf_counter()
-        fn(path, **kwargs)
-        latencies.append(time.perf_counter() - t0)
+        response = fn(path, **kwargs)
+        elapsed = time.perf_counter() - t0
+        _assert_2xx(response, path, method, "benchmark")
+        latencies.append(elapsed)
     return latencies
 
 
@@ -185,13 +202,16 @@ def test_single_claim_submission_latency(load_client, mock_workflow_for_load):
     """
     latencies: list[float] = []
     for _ in range(BENCH_WARMUP):
-        load_client.post("/api/v1/claims", json=VALID_CLAIM_PAYLOAD)
+        w = load_client.post("/api/v1/claims", json=VALID_CLAIM_PAYLOAD)
+        _assert_2xx(w, "/api/v1/claims", "post", "warmup")
 
     for i in range(BENCH_REPS):
         payload = {**VALID_CLAIM_PAYLOAD, "policy_number": f"POL-BENCH-{i:05d}"}
         t0 = time.perf_counter()
-        load_client.post("/api/v1/claims", json=payload)
-        latencies.append(time.perf_counter() - t0)
+        response = load_client.post("/api/v1/claims", json=payload)
+        elapsed = time.perf_counter() - t0
+        _assert_2xx(response, "/api/v1/claims", "post", "benchmark")
+        latencies.append(elapsed)
 
     sorted_lats = sorted(latencies)
     p50 = _percentile(sorted_lats, 0.50)

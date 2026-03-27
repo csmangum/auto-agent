@@ -820,7 +820,7 @@ WEBHOOK_MAX_RETRIES=5
 }
 ```
 
-**Event types:** `claim.submitted` · `claim.processing` · `claim.needs_review` · `claim.failed` · `claim.opened` · `claim.closed` · `claim.denied` · `claim.pending_info` · `claim.under_investigation` · `claim.archived`
+**Claim status event types (non-exhaustive):** `claim.submitted` · `claim.processing` · `claim.needs_review` · `claim.failed` · `claim.opened` · `claim.closed` · `claim.denied` · `claim.pending_info` · `claim.under_investigation` · `claim.archived` · `claim.disputed` · `claim.dispute_resolved` · `claim.purged` · `claim.partial_loss`.  The system also emits other families (for example `repair.*` and `ucspa.deadline_approaching`); see the webhook implementation for the full mapping.
 
 ### Repair authorized event
 

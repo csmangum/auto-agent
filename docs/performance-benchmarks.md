@@ -8,8 +8,8 @@ Three dimensions are measured:
 
 | Dimension | What is measured | Relevant test |
 |-----------|-----------------|---------------|
-| **API latency** | Single-request response time per endpoint | `tests/load/test_api_benchmarks.py` |
-| **Claim processing time** | End-to-end wall time to process one claim (mocked workflow) | `tests/load/test_api_benchmarks.py` |
+| **API latency** | Single-request response time per key endpoint (health, list, submit; mocked workflow, no LLM) | `tests/load/test_api_benchmarks.py` |
+| **End-to-end processing (LLM)** | Full workflow wall time including model calls | `scripts/evaluate_claim_processing.py` |
 | **Throughput** | Claims submitted per second under concurrent load | `tests/load/test_concurrent_claims.py` |
 
 All load tests require a running FastAPI app instance (served by FastAPI `TestClient` in-process) with the workflow engine mocked out so that LLM round-trips do not inflate API latency numbers.
@@ -152,24 +152,26 @@ python scripts/evaluate_claim_processing.py --quick
 
 ## CI Integration
 
-Load tests run in the `load` CI job (see `.github/workflows/`).  The job uses reduced concurrency (`LOAD_TEST_CONCURRENCY=2`) to fit in the free-tier runner time budget, and the results are not uploaded as artifacts by default.  To capture results in CI, set `LOAD_TEST_OUTPUT` to a path and upload it with the `actions/upload-artifact` step.
+Load tests run in the `load` CI job on `main` (see `.github/workflows/ci.yml`).  The job uses reduced concurrency (`LOAD_TEST_CONCURRENCY=2`) to fit in the free-tier runner time budget.  It sets `LOAD_TEST_OUTPUT=load_test_report.json` and uploads that file on every run via the **Upload load report** step (`load-test-report` artifact), `if: always()`.
 
-Example CI step:
+When adding or customizing workflows, set `LOAD_TEST_OUTPUT` to a path and upload it with `actions/upload-artifact` the same way.
+
+Example (mirrors the workflow pattern):
 
 ```yaml
 - name: Run load tests
   env:
     MOCK_DB_PATH: data/mock_db.json
     LOAD_TEST_CONCURRENCY: 2
-    LOAD_TEST_OUTPUT: /tmp/load_results.jsonl
+    LOAD_TEST_OUTPUT: load_test_report.json
   run: .venv/bin/pytest tests/load/ -v -m load -s
 
-- name: Upload benchmark results
+- name: Upload load report
   if: always()
   uses: actions/upload-artifact@v4
   with:
-    name: load-test-results
-    path: /tmp/load_results.jsonl
+    name: load-test-report
+    path: load_test_report.json
 ```
 
 ---
