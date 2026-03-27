@@ -524,6 +524,29 @@ helm upgrade claim-agent ./helm/claim-agent \
   --set replicaCount=2
 ```
 
+#### 6.2.1 Limitations of replica-weighted canary and fine-grained traffic splitting
+
+Replica-weighted canary distributes traffic in proportion to pod counts across both Deployments. This is coarse-grained: with a total of 10 replicas the smallest step you can achieve is 10 % (1 canary pod), and reaching 1 % would require 99 stable pods alongside 1 canary pod — an expensive and impractical configuration.
+
+**When to upgrade to a service mesh or ingress-based canary**
+
+If you need finer traffic splits (e.g. 1 %, 0.1 %), header- or cookie-based routing (send only internal users to the canary), or per-request observability independent of replica count, adopt a service mesh or an ingress controller that supports weighted routing:
+
+| Approach | How traffic weight is configured | Notes |
+|---|---|---|
+| **Istio** | `VirtualService` `weight` fields on `HTTPRouteDestination` | Works alongside any number of replicas; sub-1 % splits are possible. See [Istio traffic management docs](https://istio.io/latest/docs/concepts/traffic-management/). |
+| **Linkerd** | `HTTPRoute` (Gateway API) with weight fields, or the `trafficsplit` SMI CR | Lightweight sidecar; supports canary via [Flagger](https://flagger.app/) for automated promotion. See [Linkerd traffic split docs](https://linkerd.io/2.x/tasks/canary-release/). |
+| **NGINX Ingress** | `nginx.ingress.kubernetes.io/canary: "true"` + `nginx.ingress.kubernetes.io/canary-weight: "5"` annotations | No mesh required; splits happen at the ingress layer. See [NGINX canary annotations docs](https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/annotations/#canary). |
+| **Argo Rollouts** | `Rollout` resource with `canary` strategy and `steps` | Integrates with Istio, Linkerd, NGINX, and ALB; supports automated analysis and promotion. See [Argo Rollouts docs](https://argoproj.github.io/argo-rollouts/). |
+
+**Recommended upgrade path**
+
+1. Continue using replica-weighted canary (§6.2) for coarse splits (≥ 10 %) with no additional infrastructure.
+2. Install an ingress controller (e.g. NGINX Ingress) and use canary weight annotations when you need splits in the 1–9 % range without a full mesh.
+3. Adopt a service mesh (Istio or Linkerd) — or Argo Rollouts with your preferred provider — when you require sub-1 % splits, header/cookie routing, automated metric-driven promotion, or deep per-request telemetry.
+
+> **Note:** The manifests and scripts in this repository (`k8s/`, `scripts/canary_deploy.sh`, Helm chart) implement the replica-weighted approach only. Service-mesh and ingress canary configurations are cluster-specific and are not included in-repo; refer to the upstream documentation linked above.
+
 ---
 
 ### 6.3 Automated deployment via GitHub Actions
