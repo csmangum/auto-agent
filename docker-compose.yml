@@ -104,7 +104,7 @@ services:
     image: grafana/loki:3.3.2
     profiles: ["monitoring"]
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     volumes:
       - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
       - loki-data:/loki

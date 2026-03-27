@@ -8,9 +8,11 @@ replicaCount: 2
 # Controls how new versions are rolled out.
 #
 # type: RollingUpdate  — default; gradually replaces old pods (zero-downtime).
-# type: BlueGreen      — deploys alongside the existing version; traffic switches
-#                        atomically via the claim-agent-active Service selector.
-#                        Use scripts/blue_green_switch.sh to cut over.
+# type: BlueGreen      — pod template gets deployment-slot (not in Deployment
+#                        selector, so helm upgrade can change slot). Two live
+#                        versions + traffic switch: use k8s/blue-green/ and
+#                        scripts/blue_green_switch.sh, or two releases with
+#                        different blueGreenSlot / fullnameOverride.
 # type: Canary         — runs a small canary Deployment next to the stable one;
 #                        traffic weight is proportional to replica counts.
 #                        Use scripts/canary_deploy.sh to manage the rollout.

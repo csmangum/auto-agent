@@ -13,12 +13,13 @@ spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
+  # BlueGreen: do not put deployment-slot in the selector — it is immutable on
+  # Deployment. Slot is only on pod labels so helm upgrade can change the slot
+  # without failing; full blue+green (two live versions) uses k8s/blue-green/
+  # or two chart releases with distinct slot values.
   selector:
     matchLabels:
       {{- include "claim-agent.selectorLabels" . | nindent 6 }}
-      {{- if eq .Values.deploymentStrategy.type "BlueGreen" }}
-      deployment-slot: {{ .Values.deploymentStrategy.blueGreenSlot | quote }}
-      {{- end }}
   {{- if eq .Values.deploymentStrategy.type "BlueGreen" }}
   # BlueGreen: use Recreate so pods are replaced atomically within each slot.
   # Traffic switch is performed by updating the claim-agent-active Service selector.

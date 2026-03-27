@@ -22,7 +22,7 @@ on:
         type: choice
         options: [blue-green, canary, rolling]
       canary_weight:
-        description: "Initial canary traffic percentage (canary strategy only)"
+        description: "Approx. canary traffic % (1–90; canary strategy only)"
         required: false
         default: "10"
       image_tag:
@@ -227,10 +227,26 @@ jobs:
         id: replicas
         run: |
           WEIGHT="${{ github.event.inputs.canary_weight }}"
+          if [[ -z "$WEIGHT" ]]; then
+            WEIGHT=10
+          fi
+          if ! [[ "$WEIGHT" =~ ^[0-9]+$ ]]; then
+            echo "canary_weight must be an integer (got '$WEIGHT')." >&2
+            exit 1
+          fi
+          if [[ "$WEIGHT" -lt 1 || "$WEIGHT" -gt 90 ]]; then
+            echo "canary_weight must be between 1 and 90 so stable_replicas stays >= 1 (got $WEIGHT)." >&2
+            echo "For a full cutover use blue-green, rolling, or scripts/canary_deploy.sh finish." >&2
+            exit 1
+          fi
           TOTAL=10
           CANARY=$(( TOTAL * WEIGHT / 100 ))
           [[ $CANARY -lt 1 ]] && CANARY=1
           STABLE=$(( TOTAL - CANARY ))
+          if [[ "$STABLE" -lt 1 ]]; then
+            echo "Internal error: stable_replicas would be $STABLE (weight=$WEIGHT)." >&2
+            exit 1
+          fi
           echo "canary_replicas=$CANARY" >> "$GITHUB_OUTPUT"
           echo "stable_replicas=$STABLE" >> "$GITHUB_OUTPUT"
           echo "Canary weight: ${WEIGHT}% → canary=${CANARY}, stable=${STABLE} replicas"

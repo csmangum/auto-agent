@@ -7,7 +7,7 @@
 #
 #   kubectl patch service claim-agent-active -n claim-agent \
 #     --type=json \
-#     -p '[{"op":"replace","path":"/spec/selector/deployment-slot","value":"green"}]'
+#     -p '[{"op":"add","path":"/spec/selector/deployment-slot","value":"green"}]'
 #
 # Or use the helper script:
 #   scripts/blue_green_switch.sh green

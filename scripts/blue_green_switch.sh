@@ -134,8 +134,8 @@ log "Patching $SERVICE_NAME selector → deployment-slot=$TARGET_SLOT …"
 run_kubectl patch service "$SERVICE_NAME" -n "$NAMESPACE" \
   --type=json \
   -p "[
-    {\"op\":\"replace\",\"path\":\"/spec/selector/deployment-slot\",\"value\":\"${TARGET_SLOT}\"},
-    {\"op\":\"replace\",\"path\":\"/metadata/annotations/deployment.claim-agent~1active-slot\",\"value\":\"${TARGET_SLOT}\"}
+    {\"op\":\"add\",\"path\":\"/spec/selector/deployment-slot\",\"value\":\"${TARGET_SLOT}\"},
+    {\"op\":\"add\",\"path\":\"/metadata/annotations/deployment.claim-agent~1active-slot\",\"value\":\"${TARGET_SLOT}\"}
   ]"
 
 if ! $DRY_RUN; then
