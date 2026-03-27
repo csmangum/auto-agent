@@ -29,6 +29,7 @@ flowchart LR
 
 ### Reference
 
+- **[API Integration Guide](api-integration-guide.md)** - Authentication, common flows, and curl examples for external integrators
 - **[Tools](tools.md)** - Complete tool reference
 - **[Webhooks](webhooks.md)** - Outbound webhooks for status changes and repair authorization
 - **[Adapters](adapters.md)** - Pluggable external-system integrations (policy, valuation, repair shops, parts, SIU)
@@ -49,10 +50,12 @@ flowchart LR
 - **[Alerting](alerting.md)** - Prometheus alert rules and configuration
 - **[Compliance Corpus Requirements](compliance-corpus-requirements.md)** - RAG corpus requirements
 - **[Disaster Recovery](disaster-recovery.md)** - RTO/RPO targets, database recovery, service failover, data export/import, and communication plan
+- **[Runbooks](runbooks.md)** - Step-by-step incident response procedures: claim stuck in processing, database recovery, adapter failure, LLM outage
 
 ### Additional reference
 
 - **[Unified portal](unified_portal.md)** - Single login entry for claimant and repair shop portals
+- **[Performance Benchmarks](performance-benchmarks.md)** - Baseline targets for API latency, claim processing time, and throughput; how to run and tune the load tests
 - **[Adapter SLA](adapter_sla.md)** - Integration latency and availability targets
 - **[Actuarial reserve reporting](actuarial-reserve-reporting.md)** - Supervisor/admin reserve report APIs
 - **[Eval suite gaps](eval-suite-gaps.md)** - Evaluation suite status and known gaps
