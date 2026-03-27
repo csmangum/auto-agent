@@ -3,7 +3,9 @@
 import json
 import os
 import types
+from io import BytesIO
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -109,6 +111,72 @@ class TestStubReverseImageAdapter:
         adapter = StubReverseImageAdapter()
         with pytest.raises(NotImplementedError):
             adapter.match_web_occurrences(b"bytes")
+
+
+# ---------------------------------------------------------------------------
+# RestReverseImageAdapter -- EXIF scrub before multipart
+# ---------------------------------------------------------------------------
+
+
+def test_rest_reverse_image_posts_scrubbed_jpeg_bytes():
+    pytest.importorskip("PIL")
+    from PIL import Image
+    from PIL.ExifTags import Base
+
+    from claim_agent.adapters.real.reverse_image_rest import RestReverseImageAdapter
+
+    im = Image.new("RGB", (4, 4), (10, 20, 30))
+    exif = im.getexif()
+    exif[Base.Software] = "reverse-image-upload-test"
+    buf = BytesIO()
+    im.save(buf, format="JPEG", exif=exif.tobytes(), quality=90)
+    raw = buf.getvalue()
+    assert Image.open(BytesIO(raw)).getexif().get(Base.Software) == "reverse-image-upload-test"
+
+    mock_client = MagicMock()
+    good = MagicMock()
+    good.status_code = 200
+    good.json = MagicMock(return_value=[])
+    good.raise_for_status = MagicMock()
+    mock_client.post_multipart = MagicMock(return_value=good)
+
+    adapter = RestReverseImageAdapter(
+        base_url="https://provider.example.com/api",
+        scrub_exif_before_upload=True,
+    )
+    adapter._client = mock_client  # type: ignore[method-assign]
+
+    adapter.match_web_occurrences(raw)
+
+    mock_client.post_multipart.assert_called_once()
+    args, kwargs = mock_client.post_multipart.call_args
+    assert args[0] == "/images/match"
+    posted = kwargs["files"]["image"][1]
+    assert posted != raw
+    assert Image.open(BytesIO(posted)).getexif().get(Base.Software) is None
+
+
+def test_rest_reverse_image_skips_scrub_when_disabled():
+    from claim_agent.adapters.real.reverse_image_rest import RestReverseImageAdapter
+
+    raw = b"send-as-is-payload"
+    mock_client = MagicMock()
+    good = MagicMock()
+    good.status_code = 200
+    good.json = MagicMock(return_value=[])
+    good.raise_for_status = MagicMock()
+    mock_client.post_multipart = MagicMock(return_value=good)
+
+    adapter = RestReverseImageAdapter(
+        base_url="https://provider.example.com/api",
+        scrub_exif_before_upload=False,
+    )
+    adapter._client = mock_client  # type: ignore[method-assign]
+
+    adapter.match_web_occurrences(raw)
+
+    _args, kwargs = mock_client.post_multipart.call_args
+    assert kwargs["files"]["image"][1] is raw
 
 
 # ---------------------------------------------------------------------------

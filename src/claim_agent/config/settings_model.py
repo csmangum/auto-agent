@@ -1995,6 +1995,15 @@ class ReverseImageRestConfig(_CircuitBreakerFields):
         le=300.0,
         description="Request timeout seconds (larger for image upload and processing)",
     )
+    scrub_exif_before_upload: bool = Field(
+        default=True,
+        description=(
+            "When true, strip EXIF/metadata from JPEG/PNG/WebP bytes in the REST adapter "
+            "before multipart upload (requires Pillow). Env: "
+            "REVERSE_IMAGE_REST_SCRUB_EXIF_BEFORE_UPLOAD=false to send raw bytes if the "
+            "provider requires metadata."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
