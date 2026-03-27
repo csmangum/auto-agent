@@ -27,7 +27,7 @@ export default function StatCard({ title, value, subtitle, icon, color = 'blue' 
           <p className="text-3xl font-bold mt-1 text-gray-100">{value}</p>
           {subtitle && <p className="text-xs mt-1 opacity-60">{subtitle}</p>}
         </div>
-        {icon && <span className={`text-4xl ${colors.icon}`}>{icon}</span>}
+        {icon && <span className={`text-4xl ${colors.icon}`} aria-hidden="true">{icon}</span>}
       </div>
     </div>
   );
