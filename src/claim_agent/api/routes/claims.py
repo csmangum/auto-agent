@@ -5,7 +5,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.claim_access import (
@@ -38,8 +38,9 @@ from claim_agent.db.constants import (
     THIRD_PARTY_PORTAL_ELIGIBLE_PARTY_TYPES,
 )
 from claim_agent.db.constants import VALID_REPAIR_STATUSES
-from sqlalchemy import text
 
+from claim_agent.db.database import get_db_path
+from claim_agent.db.incident_repository import IncidentRepository
 from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
@@ -65,7 +66,6 @@ from claim_agent.models.incident import (
 )
 from claim_agent.services.bi_allocation import allocate_bi_limits
 from claim_agent.tools.partial_loss_logic import _parse_partial_loss_workflow_output
-from claim_agent.utils.sanitization import MAX_ACTOR_ID
 from claim_agent.mock_crew.claim_generator import (
     generate_claim_from_prompt,
     generate_incident_damage_from_vehicle,
@@ -94,6 +94,82 @@ RequireSupervisor = require_role("supervisor", "admin", "executive")
 
 
 
+@router.get("/claims/{claim_id}/repair-status", dependencies=[RequireAdjuster])
+def get_claim_repair_status(
+    claim_id: str,
+    auth: AuthContext = RequireAdjuster,
+    ctx: ClaimContext = Depends(get_claim_context),
+):
+    """Get repair status and history for a partial loss claim."""
+    claim_row = ensure_claim_access_for_adjuster(auth, claim_id, ctx.repo.get_claim(claim_id))
+    if claim_row.get("claim_type") != "partial_loss":
+        raise HTTPException(
+            status_code=400,
+            detail="Repair status only applies to partial_loss claims",
+        )
+    repo = RepairStatusRepository(db_path=get_db_path())
+    latest = repo.get_repair_status(claim_id)
+    history = repo.get_repair_status_history(claim_id)
+    cycle_time_days = repo.get_cycle_time_days(claim_id)
+    return {
+        "claim_id": claim_id,
+        "latest": latest,
+        "history": history,
+        "cycle_time_days": cycle_time_days,
+    }
+
+
+class RepairStatusUpdateBody(BaseModel):
+    """Request body for updating repair status (simulation/dashboard)."""
+
+    status: str = Field(..., min_length=1, max_length=64)
+    shop_id: str | None = Field(default=None, max_length=128)
+    authorization_id: str | None = Field(default=None, max_length=64)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+@router.post("/claims/{claim_id}/repair-status", dependencies=[RequireAdjuster])
+def update_claim_repair_status(
+    claim_id: str,
+    body: RepairStatusUpdateBody = Body(...),
+    auth: AuthContext = RequireAdjuster,
+):
+    """Update repair status (for simulation/dashboard). Infers shop_id from workflow if omitted."""
+    if body.status not in VALID_REPAIR_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Must be one of: {sorted(VALID_REPAIR_STATUSES)}",
+        )
+    claim_repo = ClaimRepository(db_path=get_db_path())
+    claim = ensure_claim_access_for_adjuster(auth, claim_id, claim_repo.get_claim(claim_id))
+    if claim.get("claim_type") != "partial_loss":
+        raise HTTPException(
+            status_code=400,
+            detail="Repair status only applies to partial_loss claims",
+        )
+    shop_id = body.shop_id
+    auth_id = body.authorization_id
+    if not shop_id or not auth_id:
+        runs = claim_repo.get_workflow_runs(claim_id, limit=5)
+        for run in runs:
+            if run.get("claim_type") != "partial_loss":
+                continue
+            parsed = _parse_partial_loss_workflow_output(run.get("workflow_output") or "")
+            if parsed:
+                shop_id = shop_id or str(parsed.get("shop_id", "")).strip()
+                auth_id = auth_id or str(parsed.get("authorization_id", "")).strip()
+                break
+    if not shop_id:
+        shop_id = "unknown"
+    status_repo = RepairStatusRepository(db_path=get_db_path())
+    row_id = status_repo.insert_repair_status(
+        claim_id=claim_id,
+        shop_id=shop_id,
+        status=body.status,
+        authorization_id=auth_id,
+        notes=body.notes,
+    )
+    return {"ok": True, "repair_status_id": row_id}
 @router.get("/claims/{claim_id}/history", dependencies=[RequireAdjuster])
 def get_claim_history(
     claim_id: str,
