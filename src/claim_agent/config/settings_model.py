@@ -407,6 +407,36 @@ class NotificationConfig(BaseSettings):
     # Leave empty to disable failure webhook dispatch.
     failure_webhook_url: str = Field(default="", validation_alias="NOTIFICATION_FAILURE_WEBHOOK_URL")
 
+    # ---------------------------------------------------------------------------
+    # Claimant message templates – configurable for regulatory / brand compliance.
+    # Each template supports named placeholders substituted at send time:
+    #   {claim_id}  — the claim identifier
+    # OTP templates additionally support: {otp}, {ttl_minutes}, {verification_id}
+    # ---------------------------------------------------------------------------
+    tmpl_receipt_acknowledged_subject: str = "Claim {claim_id} acknowledgment"
+    tmpl_receipt_acknowledged_body: str = (
+        "We received and acknowledged your claim {claim_id}."
+    )
+    tmpl_denial_letter_subject: str = "Claim {claim_id} denial letter"
+    tmpl_denial_letter_body: str = (
+        "Your claim {claim_id} has been denied."
+        " Appeal rights are included in your denial letter."
+    )
+    tmpl_follow_up_subject: str = "Claim {claim_id} follow-up"
+    tmpl_follow_up_body: str = "An update is available for your claim {claim_id}."
+    tmpl_generic_subject: str = "Claim {claim_id} update"
+    tmpl_generic_body: str = "An update is available for your claim {claim_id}."
+    tmpl_otp_email_subject: str = "Your DSAR verification code"
+    tmpl_otp_email_body: str = (
+        "Your one-time verification code is: {otp}\n\n"
+        "This code expires in {ttl_minutes} minutes. "
+        "Do not share it with anyone.\n\n"
+        "Reference: {verification_id}"
+    )
+    tmpl_otp_sms_body: str = (
+        "Your DSAR verification code: {otp}. Expires in {ttl_minutes} min."
+    )
+
     @field_validator("email_enabled", "sms_enabled", mode="before")
     @classmethod
     def _parse_bool(cls, v: Any) -> bool:

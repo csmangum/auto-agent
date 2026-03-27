@@ -202,7 +202,7 @@ def get_llm_cost_alert_config() -> dict:
 
 
 def get_notification_config() -> dict:
-    """Claimant notification configuration (email/SMS)."""
+    """Claimant notification configuration (email/SMS) including message templates."""
     s = get_settings().notification
     return {
         "email_enabled": s.email_enabled,
@@ -213,6 +213,18 @@ def get_notification_config() -> dict:
         "twilio_auth_token": s.twilio_auth_token.get_secret_value(),
         "twilio_from_phone": s.twilio_from_phone,
         "failure_webhook_url": s.failure_webhook_url,
+        # Message templates (configurable via NOTIFICATION_TMPL_* env vars)
+        "tmpl_receipt_acknowledged_subject": s.tmpl_receipt_acknowledged_subject,
+        "tmpl_receipt_acknowledged_body": s.tmpl_receipt_acknowledged_body,
+        "tmpl_denial_letter_subject": s.tmpl_denial_letter_subject,
+        "tmpl_denial_letter_body": s.tmpl_denial_letter_body,
+        "tmpl_follow_up_subject": s.tmpl_follow_up_subject,
+        "tmpl_follow_up_body": s.tmpl_follow_up_body,
+        "tmpl_generic_subject": s.tmpl_generic_subject,
+        "tmpl_generic_body": s.tmpl_generic_body,
+        "tmpl_otp_email_subject": s.tmpl_otp_email_subject,
+        "tmpl_otp_email_body": s.tmpl_otp_email_body,
+        "tmpl_otp_sms_body": s.tmpl_otp_sms_body,
     }
 
 
