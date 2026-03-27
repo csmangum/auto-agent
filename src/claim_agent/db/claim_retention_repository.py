@@ -14,6 +14,7 @@ from sqlalchemy import text
 from claim_agent.db.audit_events import (
     ACTOR_RETENTION,
     ACTOR_WORKFLOW,
+    AUDIT_EVENT_COLD_STORAGE_EXPORTED,
     AUDIT_EVENT_LITIGATION_HOLD,
     AUDIT_EVENT_RETENTION,
     AUDIT_EVENT_RETENTION_PURGED,
@@ -727,8 +728,6 @@ class ClaimRetentionRepository:
         Raises:
             ClaimNotFoundError: If the claim does not exist.
         """
-        from claim_agent.db.audit_events import AUDIT_EVENT_COLD_STORAGE_EXPORTED
-
         with get_connection(self._db_path) as conn:
             row = conn.execute(
                 text("SELECT status FROM claims WHERE id = :claim_id"),

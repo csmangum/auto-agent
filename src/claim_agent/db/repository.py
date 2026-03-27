@@ -2888,7 +2888,11 @@ class ClaimRepository:
         resolution_notes: str | None = None,
         actor_id: str = ACTOR_WORKFLOW,
     ) -> dict[str, Any]:
-        """Update a task. Returns the updated task dict. Raises ValueError if task not found."""
+        """Update a task. Returns the updated task dict.
+
+        Raises:
+            DomainValidationError: If the task does not exist or validation fails.
+        """
         return self._task_repo.update_task(task_id, title=title, description=description, status=status, priority=priority, assigned_to=assigned_to, due_date=due_date, resolution_notes=resolution_notes, actor_id=actor_id)
 
     def list_all_tasks(

@@ -69,6 +69,7 @@ class RestERPAdapter(ERPAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name="erp",
         )
         self._shop_id_map: dict[str, str] = dict(shop_id_map or {})
         self._assignment_path = assignment_path
@@ -169,6 +170,10 @@ class RestERPAdapter(ERPAdapter):
         raw = resp.json()
         items = raw if isinstance(raw, list) else raw.get("events") or []
         return [item for item in items if isinstance(item, dict)]
+
+    def health_check(self) -> tuple[bool, str]:
+        """Probe the ERP REST API for liveness."""
+        return self._client.health_check_with_fallback()
 
 
 # ---------------------------------------------------------------------------

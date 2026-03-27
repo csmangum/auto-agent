@@ -64,6 +64,8 @@ db.sqlite3-journal
 
 # Claim agent SQLite DB
 data/claims.db
+data/claims_*.db
+data/*_test.db
 
 # Attachment storage (runtime uploads; tests use tmp dirs via ATTACHMENT_STORAGE_PATH)
 data/attachments/

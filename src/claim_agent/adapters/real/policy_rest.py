@@ -57,6 +57,7 @@ class RestPolicyAdapter(PolicyAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name="policy",
         )
         self._path_template = (path_template or _default_path_template()).strip()
         self._response_key = (response_key or "").strip() or None

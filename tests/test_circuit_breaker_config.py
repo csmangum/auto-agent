@@ -129,6 +129,39 @@ class TestRestAdapterCircuitBreakerWiring:
         assert client._circuit_failure_threshold == 5
         assert client._circuit_recovery_timeout == 120.0
 
+    def test_state_bureau_rest_health_check_probes_each_configured_client(self):
+        from unittest.mock import MagicMock, patch
+
+        from claim_agent.adapters.real.state_bureau_rest import RestStateBureauAdapter
+
+        def client_factory(**kw):
+            m = MagicMock()
+            if "ca.example" in kw.get("base_url", ""):
+                m.health_check_with_fallback.return_value = (True, "ok")
+            else:
+                m.health_check_with_fallback.return_value = (False, "timeout")
+            return m
+
+        with patch(
+            "claim_agent.adapters.real.state_bureau_rest.AdapterHttpClient",
+            side_effect=client_factory,
+        ):
+            adapter = RestStateBureauAdapter(
+                state_endpoints={
+                    "CA": "https://ca.example.com",
+                    "TX": "https://tx.example.com",
+                }
+            )
+            ok, msg = adapter.health_check()
+        assert ok is False
+        assert "TX:timeout" in msg
+
+    def test_state_bureau_rest_health_check_no_endpoints(self):
+        from claim_agent.adapters.real.state_bureau_rest import RestStateBureauAdapter
+
+        adapter = RestStateBureauAdapter(state_endpoints={})
+        assert adapter.health_check() == (False, "no state bureau endpoints configured")
+
     def test_claim_search_rest_adapter_wires_circuit_breaker(self):
         from claim_agent.adapters.real.claim_search_rest import RestClaimSearchAdapter
         adapter = RestClaimSearchAdapter(

@@ -67,6 +67,7 @@ class RestSIUAdapter(SIUAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name="siu",
         )
         self._cases_path = cases_path
         self._notes_path_template = notes_path_template.strip()

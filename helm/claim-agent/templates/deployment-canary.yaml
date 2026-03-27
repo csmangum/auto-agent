@@ -1,44 +1,41 @@
+{{- if eq .Values.deploymentStrategy.type "Canary" }}
+# Canary Deployment — rendered only when deploymentStrategy.type=Canary.
+#
+# Runs alongside the main Deployment (which acts as the stable version).
+# Both deployments share the same app.kubernetes.io/name label so the Service
+# selects pods from both; traffic weight ≈ canary_replicas / total_replicas.
+#
+# Promote: update the main Deployment image and set replicaCount to the full
+#          desired count, then remove the canary by setting type=RollingUpdate.
+# Roll back: set deploymentStrategy.type=RollingUpdate (removes this template).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "claim-agent.fullname" . }}
+  name: {{ include "claim-agent.fullname" . }}-canary
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "claim-agent.labels" . | nindent 4 }}
+    track: canary
   {{- with .Values.commonAnnotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
-  {{- end }}
-  # BlueGreen: do not put deployment-slot in the selector — it is immutable on
-  # Deployment. Slot is only on pod labels so helm upgrade can change the slot
-  # without failing; full blue+green (two live versions) uses k8s/blue-green/
-  # or two chart releases with distinct slot values.
+  replicas: {{ .Values.deploymentStrategy.canary.replicas }}
   selector:
     matchLabels:
       {{- include "claim-agent.selectorLabels" . | nindent 6 }}
-  {{- if eq .Values.deploymentStrategy.type "BlueGreen" }}
-  # BlueGreen: use Recreate so pods are replaced atomically within each slot.
-  # Traffic switch is performed by updating the claim-agent-active Service selector.
-  strategy:
-    type: Recreate
-  {{- else }}
+      track: canary
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: {{ .Values.deploymentStrategy.rollingUpdate.maxSurge | default 1 }}
-      maxUnavailable: {{ .Values.deploymentStrategy.rollingUpdate.maxUnavailable | default 0 }}
-  {{- end }}
+      maxSurge: 1
+      maxUnavailable: 0
   template:
     metadata:
       labels:
         {{- include "claim-agent.selectorLabels" . | nindent 8 }}
-        {{- if eq .Values.deploymentStrategy.type "BlueGreen" }}
-        deployment-slot: {{ .Values.deploymentStrategy.blueGreenSlot | quote }}
-        {{- end }}
+        track: canary
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
@@ -57,7 +54,11 @@ spec:
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       containers:
         - name: {{ .Chart.Name }}
+          {{- if .Values.deploymentStrategy.canary.imageTag }}
+          image: "{{ .Values.image.repository }}:{{ .Values.deploymentStrategy.canary.imageTag }}"
+          {{- else }}
           image: {{ include "claim-agent.image" . }}
+          {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
@@ -120,14 +121,4 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.topologySpreadConstraints }}
-      topologySpreadConstraints:
-        {{- range .Values.topologySpreadConstraints }}
-        - maxSkew: {{ .maxSkew }}
-          topologyKey: {{ .topologyKey }}
-          whenUnsatisfiable: {{ .whenUnsatisfiable }}
-          labelSelector:
-            matchLabels:
-              {{- include "claim-agent.selectorLabels" $ | nindent 14 }}
-        {{- end }}
-      {{- end }}
+{{- end }}

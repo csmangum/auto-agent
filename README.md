@@ -247,7 +247,29 @@ Run the claim processing evaluation (requires API key).
 
 ## Data Setup
 
-To enable duplicate detection with historical claims:
+### Pilot Data Seeding
+
+For pilot environments, generate realistic historical claims for duplicate detection, reporting, and analytics:
+
+```bash
+# Generate 100 claims spanning 6 months (default)
+python scripts/seed_pilot_data.py
+
+# Custom configuration
+python scripts/seed_pilot_data.py --count 200 --months 12
+
+# Reproducible generation (e.g. demos / tests)
+python scripts/seed_pilot_data.py --seed 42
+
+# Clean reset with fresh data
+python scripts/seed_pilot_data.py --clean
+```
+
+See [Pilot Data Seeding](docs/pilot_data_seeding.md) for detailed documentation.
+
+### Mock Data Seeding
+
+For quick test data from predefined claims in `mock_db.json`:
 
 ```bash
 python scripts/seed_claims_from_mock_db.py

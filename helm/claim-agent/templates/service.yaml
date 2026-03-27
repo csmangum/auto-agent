@@ -9,6 +9,9 @@ spec:
   type: {{ .Values.service.type }}
   selector:
     {{- include "claim-agent.selectorLabels" . | nindent 4 }}
+    {{- if eq .Values.deploymentStrategy.type "BlueGreen" }}
+    deployment-slot: {{ .Values.deploymentStrategy.blueGreenSlot | quote }}
+    {{- end }}
   ports:
     - name: http
       port: {{ .Values.service.port }}

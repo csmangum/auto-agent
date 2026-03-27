@@ -1,5 +1,7 @@
 """Tests for REST fraud reporting adapter."""
 
+from unittest.mock import MagicMock, patch
+
 from claim_agent.adapters.real.fraud_reporting_rest import RestFraudReportingAdapter
 
 
@@ -115,4 +117,16 @@ def test_rest_fraud_reporting_adapter_nicb(monkeypatch):
     assert out["report_id"] == "NICB-REST-123"
     assert out["report_type"] == "theft"
     assert out["indicators_count"] == 2
+
+
+def test_rest_fraud_reporting_health_check_delegates_to_http_client():
+    with patch(
+        "claim_agent.adapters.real.fraud_reporting_rest.AdapterHttpClient"
+    ) as mock_cls:
+        mock_client = MagicMock()
+        mock_client.health_check_with_fallback.return_value = (True, "ok")
+        mock_cls.return_value = mock_client
+        ad = RestFraudReportingAdapter(base_url="https://fraud.example.com")
+        assert ad.health_check() == (True, "ok")
+        mock_client.health_check_with_fallback.assert_called_once_with()
 

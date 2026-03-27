@@ -1,0 +1,49 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Collect structured logs from the claim-agent container via the Docker daemon socket.
+  # Label `job=claim-agent` makes these logs easy to query in Grafana/Loki.
+  - job_name: claim-agent
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: name
+            values:
+              - claim-agent
+    relabel_configs:
+      - source_labels: [__meta_docker_container_name]
+        regex: /(.*)
+        target_label: container
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+      - replacement: claim-agent
+        target_label: job
+    pipeline_stages:
+      # Parse JSON log lines produced when CLAIM_AGENT_LOG_FORMAT=json.
+      # Falls back gracefully for human-readable lines (non-JSON lines are forwarded as-is).
+      # Do not promote claim_id / correlation_id to Loki labels (high cardinality); use LogQL:
+      #   {job="claim-agent"} | json | claim_id="CLM-123"
+      - json:
+          expressions:
+            level: level
+            claim_type: claim_type
+            logger: logger
+      - labels:
+          level:
+          claim_type:
+          logger:
+      # Drop DEBUG lines in non-debug deployments to reduce ingestion volume.
+      # Remove this stage if DEBUG logs are needed in Loki.
+      - drop:
+          drop_counter_reason: debug_drop
+          if: 'level == "DEBUG"'

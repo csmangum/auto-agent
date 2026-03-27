@@ -12,6 +12,8 @@ from claim_agent.db.audit_events import (
     AUDIT_EVENT_TASK_UPDATED,
 )
 from claim_agent.db.database import get_connection, row_to_dict
+from claim_agent.db.document_repository import DocumentRepository
+from claim_agent.diary.recurrence import RECURRENCE_INTERVAL_DAYS, VALID_RECURRENCE_RULES
 from claim_agent.exceptions import ClaimNotFoundError, DomainValidationError
 from claim_agent.utils.sanitization import (
     sanitize_actor_id,
@@ -62,11 +64,6 @@ class TaskRepository:
         if recurrence_rule is None and recurrence_interval is not None:
             recurrence_interval = None
         if recurrence_rule is not None:
-            from claim_agent.diary.recurrence import (
-                RECURRENCE_INTERVAL_DAYS,
-                VALID_RECURRENCE_RULES,
-            )
-
             if recurrence_rule not in VALID_RECURRENCE_RULES:
                 raise DomainValidationError(
                     f"Invalid recurrence_rule '{recurrence_rule}'. "
@@ -91,8 +88,6 @@ class TaskRepository:
             and document_type
             and task_type in ("request_documents", "obtain_police_report")
         ):
-            from claim_agent.db.document_repository import DocumentRepository
-
             doc_repo = DocumentRepository(db_path=self._db_path)
             doc_req_id = doc_repo.create_document_request(
                 claim_id, document_type, requested_from=requested_from

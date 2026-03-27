@@ -9,7 +9,9 @@ Images submitted to a production reverse-image provider may contain PII (licence
 plates, faces, GPS EXIF data).  Ensure that:
 
 * The provider's DPA covers your jurisdiction's data-transfer requirements.
-* Images are scrubbed of EXIF metadata before transmission when required.
+* By default the REST adapter strips EXIF from JPEG/PNG/WebP before upload
+  (``REVERSE_IMAGE_REST_SCRUB_EXIF_BEFORE_UPLOAD=false`` to disable if the API
+  requires raw metadata).
 * API keys are stored in secrets management, never in source code.
 * Usage is disclosed in the applicable privacy notice / DSAR records.
 
@@ -21,6 +23,8 @@ Configure via environment variables:
 - REVERSE_IMAGE_REST_MATCH_PATH: Path for image matching (default: /images/match)
 - REVERSE_IMAGE_REST_RESPONSE_KEY: Optional JSON key wrapping the matches list (e.g. matches)
 - REVERSE_IMAGE_REST_TIMEOUT: Request timeout in seconds (default: 30)
+- REVERSE_IMAGE_REST_SCRUB_EXIF_BEFORE_UPLOAD: Strip EXIF from JPEG/PNG/WebP before
+  multipart upload (default: true; set false only if the provider needs metadata)
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ import httpx
 
 from claim_agent.adapters.base import ReverseImageAdapter
 from claim_agent.adapters.http_client import AdapterHttpClient, CircuitOpenError
+from claim_agent.utils.image_bytes_privacy import scrub_exif_from_image_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +65,7 @@ class RestReverseImageAdapter(ReverseImageAdapter):
         timeout: float = 30.0,
         circuit_failure_threshold: int = 5,
         circuit_recovery_timeout: float = 60.0,
+        scrub_exif_before_upload: bool = True,
     ) -> None:
         self._client = AdapterHttpClient(
             base_url=base_url,
@@ -68,9 +74,11 @@ class RestReverseImageAdapter(ReverseImageAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name="reverse_image",
         )
         self._match_path = match_path
         self._response_key = (response_key or "").strip() or None
+        self._scrub_exif_before_upload = scrub_exif_before_upload
 
     def _extract_matches(self, raw: Any) -> list[dict[str, Any]]:
         """Normalise the API response to a list of match dicts."""
@@ -100,6 +108,9 @@ class RestReverseImageAdapter(ReverseImageAdapter):
             else:
                 raw_bytes = image
                 filename = "image.jpg"
+
+            if self._scrub_exif_before_upload:
+                raw_bytes = scrub_exif_from_image_bytes(raw_bytes)
 
             files = {"image": (filename, raw_bytes)}
             resp = self._client.post_multipart(self._match_path, files=files)
@@ -135,4 +146,5 @@ def create_rest_reverse_image_adapter() -> RestReverseImageAdapter:
         timeout=cfg.timeout,
         circuit_failure_threshold=cfg.circuit_failure_threshold,
         circuit_recovery_timeout=cfg.circuit_recovery_timeout,
+        scrub_exif_before_upload=cfg.scrub_exif_before_upload,
     )

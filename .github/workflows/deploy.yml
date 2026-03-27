@@ -1,0 +1,371 @@
+name: Deploy
+
+on:
+  # Automatically deploy after CI passes on the main branch.
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+  # Manual deployment with strategy and target environment selection.
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "production"
+        type: choice
+        options: [production, staging]
+      strategy:
+        description: "Deployment strategy"
+        required: true
+        default: "blue-green"
+        type: choice
+        options: [blue-green, canary, rolling]
+      canary_weight:
+        description: "Approx. canary traffic % (1–90; canary strategy only)"
+        required: false
+        default: "10"
+      image_tag:
+        description: "Image tag to deploy (leave blank to use the HEAD commit SHA)"
+        required: false
+        default: ""
+
+# Only one deployment per environment can run at a time.
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Guard: skip if the triggering CI run failed ──────────────────────────────
+  guard:
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+    steps:
+      - name: Check CI outcome
+        id: check
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event.workflow_run.conclusion }}" == "success" ]]; then
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "CI run did not succeed (conclusion: ${{ github.event.workflow_run.conclusion }}). Skipping deploy."
+          fi
+
+  # ── Build & push Docker image ────────────────────────────────────────────────
+  build:
+    needs: guard
+    if: needs.guard.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+      image_tag: ${{ steps.resolve_tag.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: resolve_tag
+        run: |
+          if [[ -n "${{ github.event.inputs.image_tag }}" ]]; then
+            echo "image_tag=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image_tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ steps.resolve_tag.outputs.image_tag }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Blue/Green deployment ────────────────────────────────────────────────────
+  deploy-blue-green:
+    needs: [guard, build]
+    if: |
+      needs.guard.outputs.should_deploy == 'true' &&
+      (github.event.inputs.strategy == 'blue-green' || github.event_name == 'workflow_run')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Set kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Determine inactive slot
+        id: slot
+        run: |
+          ACTIVE=$(kubectl get service claim-agent-active -n claim-agent \
+                     -o jsonpath='{.spec.selector.deployment-slot}' 2>/dev/null || echo "blue")
+          if [[ "$ACTIVE" == "blue" ]]; then
+            echo "target=green" >> "$GITHUB_OUTPUT"
+            echo "inactive=blue" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=blue" >> "$GITHUB_OUTPUT"
+            echo "inactive=green" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Active slot is '$ACTIVE'; deploying to '$( [[ $ACTIVE == blue ]] && echo green || echo blue )'"
+
+      - name: Update inactive slot image
+        run: |
+          kubectl set image deployment/claim-agent-${{ steps.slot.outputs.target }} \
+            claim-agent=ghcr.io/${{ github.repository }}:${{ needs.build.outputs.image_tag }} \
+            -n claim-agent
+
+      - name: Wait for inactive slot to be ready
+        run: |
+          kubectl rollout status deployment/claim-agent-${{ steps.slot.outputs.target }} \
+            -n claim-agent --timeout=300s
+
+      - name: Smoke-test the inactive slot (port-forward)
+        run: |
+          # Forward the inactive slot's pod port and run a health check.
+          TARGET_POD=$(kubectl get pods -n claim-agent \
+            -l "deployment-slot=${{ steps.slot.outputs.target }}" \
+            -o jsonpath='{.items[0].metadata.name}')
+          if [[ -z "$TARGET_POD" ]]; then
+            echo "No pods found for slot ${{ steps.slot.outputs.target }}. Aborting." >&2
+            exit 1
+          fi
+          kubectl port-forward pod/"$TARGET_POD" 18000:8000 -n claim-agent &
+          PF_PID=$!
+          sleep 5
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18000/health)
+          kill "$PF_PID" || true
+          if [[ "$HTTP_STATUS" != "200" ]]; then
+            echo "Health check failed (HTTP $HTTP_STATUS). Aborting switch." >&2
+            exit 1
+          fi
+          echo "Health check passed (HTTP $HTTP_STATUS)."
+
+      - name: Switch traffic to new slot
+        run: |
+          bash scripts/blue_green_switch.sh ${{ steps.slot.outputs.target }} \
+            --namespace claim-agent
+
+      - name: Verify active slot after switch
+        run: |
+          ACTIVE=$(kubectl get service claim-agent-active -n claim-agent \
+                     -o jsonpath='{.spec.selector.deployment-slot}')
+          echo "Active slot after switch: $ACTIVE"
+          [[ "$ACTIVE" == "${{ steps.slot.outputs.target }}" ]] || \
+            (echo "Switch verification failed!" >&2 && exit 1)
+
+      - name: Scale down the now-inactive slot
+        run: |
+          kubectl scale deployment/claim-agent-${{ steps.slot.outputs.inactive }} \
+            --replicas=0 -n claim-agent
+
+      - name: Annotate deployment with release metadata
+        run: |
+          kubectl annotate deployment/claim-agent-${{ steps.slot.outputs.target }} \
+            -n claim-agent --overwrite \
+            deployment.claim-agent/deployed-at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+            deployment.claim-agent/image-tag="${{ needs.build.outputs.image_tag }}" \
+            deployment.claim-agent/triggered-by="${{ github.actor }}"
+
+  # ── Canary deployment ────────────────────────────────────────────────────────
+  deploy-canary:
+    needs: [guard, build]
+    if: |
+      needs.guard.outputs.should_deploy == 'true' &&
+      github.event.inputs.strategy == 'canary'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Set kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Compute replica counts for requested canary weight
+        id: replicas
+        run: |
+          WEIGHT="${{ github.event.inputs.canary_weight }}"
+          if [[ -z "$WEIGHT" ]]; then
+            WEIGHT=10
+          fi
+          if ! [[ "$WEIGHT" =~ ^[0-9]+$ ]]; then
+            echo "canary_weight must be an integer (got '$WEIGHT')." >&2
+            exit 1
+          fi
+          if [[ "$WEIGHT" -lt 1 || "$WEIGHT" -gt 90 ]]; then
+            echo "canary_weight must be between 1 and 90 so stable_replicas stays >= 1 (got $WEIGHT)." >&2
+            echo "For a full cutover use blue-green, rolling, or scripts/canary_deploy.sh finish." >&2
+            exit 1
+          fi
+          TOTAL=10
+          CANARY=$(( TOTAL * WEIGHT / 100 ))
+          [[ $CANARY -lt 1 ]] && CANARY=1
+          STABLE=$(( TOTAL - CANARY ))
+          if [[ "$STABLE" -lt 1 ]]; then
+            echo "Internal error: stable_replicas would be $STABLE (weight=$WEIGHT)." >&2
+            exit 1
+          fi
+          echo "canary_replicas=$CANARY" >> "$GITHUB_OUTPUT"
+          echo "stable_replicas=$STABLE" >> "$GITHUB_OUTPUT"
+          echo "Canary weight: ${WEIGHT}% → canary=${CANARY}, stable=${STABLE} replicas"
+
+      - name: Start canary deployment
+        run: |
+          bash scripts/canary_deploy.sh start \
+            --image "ghcr.io/${{ github.repository }}:${{ needs.build.outputs.image_tag }}" \
+            --canary-replicas ${{ steps.replicas.outputs.canary_replicas }} \
+            --stable-replicas ${{ steps.replicas.outputs.stable_replicas }} \
+            --namespace claim-agent
+
+      - name: Wait for canary pods to be ready
+        run: |
+          kubectl rollout status deployment/claim-agent-canary \
+            -n claim-agent --timeout=300s
+
+      - name: Run smoke test against canary pods
+        run: |
+          CANARY_POD=$(kubectl get pods -n claim-agent \
+            -l "track=canary" \
+            -o jsonpath='{.items[0].metadata.name}')
+          if [[ -z "$CANARY_POD" ]]; then
+            echo "No canary pods found. Aborting." >&2
+            exit 1
+          fi
+          kubectl port-forward pod/"$CANARY_POD" 18000:8000 -n claim-agent &
+          PF_PID=$!
+          sleep 5
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18000/health)
+          kill "$PF_PID" || true
+          if [[ "$HTTP_STATUS" != "200" ]]; then
+            echo "Canary health check failed (HTTP $HTTP_STATUS). Rolling back." >&2
+            bash scripts/canary_deploy.sh rollback \
+              --stable-replicas ${{ steps.replicas.outputs.stable_replicas }} \
+              --namespace claim-agent
+            exit 1
+          fi
+          echo "Canary health check passed (HTTP $HTTP_STATUS)."
+
+      - name: Summary
+        run: |
+          echo "### Canary Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image**: ghcr.io/${{ github.repository }}:${{ needs.build.outputs.image_tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Canary weight**: ~${{ github.event.inputs.canary_weight }}%" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Canary replicas**: ${{ steps.replicas.outputs.canary_replicas }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Stable replicas**: ${{ steps.replicas.outputs.stable_replicas }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Monitor metrics and then run \`scripts/canary_deploy.sh finish\` to promote" >> "$GITHUB_STEP_SUMMARY"
+          echo "or \`scripts/canary_deploy.sh rollback\` to revert." >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Rolling update deployment (default/fallback) ──────────────────────────────
+  deploy-rolling:
+    needs: [guard, build]
+    if: |
+      needs.guard.outputs.should_deploy == 'true' &&
+      github.event.inputs.strategy == 'rolling'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Set kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Update image (rolling)
+        run: |
+          kubectl set image deployment/claim-agent \
+            claim-agent=ghcr.io/${{ github.repository }}:${{ needs.build.outputs.image_tag }} \
+            -n claim-agent
+
+      - name: Wait for rollout to complete
+        run: |
+          kubectl rollout status deployment/claim-agent \
+            -n claim-agent --timeout=300s
+
+      - name: Verify health
+        run: |
+          POD=$(kubectl get pods -n claim-agent \
+            -l "app.kubernetes.io/name=claim-agent" \
+            -o jsonpath='{.items[0].metadata.name}')
+          if [[ -z "$POD" ]]; then
+            echo "No pods found after rolling update. Aborting." >&2
+            exit 1
+          fi
+          kubectl port-forward pod/"$POD" 18000:8000 -n claim-agent &
+          PF_PID=$!
+          sleep 5
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18000/health)
+          kill "$PF_PID" || true
+          if [[ "$HTTP_STATUS" != "200" ]]; then
+            echo "Health check failed (HTTP $HTTP_STATUS). Rolling back." >&2
+            kubectl rollout undo deployment/claim-agent -n claim-agent
+            exit 1
+          fi
+          echo "Health check passed (HTTP $HTTP_STATUS)."
+
+  # ── Notify on failure ────────────────────────────────────────────────────────
+  notify-failure:
+    needs: [deploy-blue-green, deploy-canary, deploy-rolling]
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Emit failure summary
+        run: |
+          echo "## ❌ Deployment Failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "One or more deployment jobs failed. Check the logs above." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Manual rollback options:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Blue/green: \`bash scripts/blue_green_switch.sh <blue|green>\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Canary: \`bash scripts/canary_deploy.sh rollback\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Rolling: \`kubectl rollout undo deployment/claim-agent -n claim-agent\`" >> "$GITHUB_STEP_SUMMARY"

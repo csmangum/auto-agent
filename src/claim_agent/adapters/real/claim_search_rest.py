@@ -44,6 +44,7 @@ class RestClaimSearchAdapter(ClaimSearchAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name="claim_search",
         )
         self._search_path = search_path
         self._response_key = (response_key or "").strip() or None
@@ -109,6 +110,10 @@ class RestClaimSearchAdapter(ClaimSearchAdapter):
             for m in (self._normalize_match(item, vin, claimant_name) for item in items)
             if m
         ]
+
+    def health_check(self) -> tuple[bool, str]:
+        """Probe the ClaimSearch REST API for liveness."""
+        return self._client.health_check_with_fallback()
 
 
 def create_rest_claim_search_adapter() -> RestClaimSearchAdapter:

@@ -50,6 +50,7 @@ class RestFraudReportingAdapter(FraudReportingAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name="fraud_reporting",
         )
         self._state_bureau_path = state_bureau_path
         self._nicb_path = nicb_path
@@ -144,6 +145,10 @@ class RestFraudReportingAdapter(FraudReportingAdapter):
             ),
             "message": _to_string(payload.get("message"), "NISS report filed"),
         }
+
+    def health_check(self) -> tuple[bool, str]:
+        """Probe the fraud-reporting REST API for liveness."""
+        return self._client.health_check_with_fallback()
 
 
 def create_rest_fraud_reporting_adapter() -> RestFraudReportingAdapter:

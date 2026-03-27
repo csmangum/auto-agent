@@ -547,6 +547,16 @@ class LoggingConfig(BaseSettings):
     log_format: str = "human"
     log_level: str = "INFO"
     mask_pii: bool = True
+    log_retention_days: int = Field(
+        default=90,
+        description=(
+            "Number of days to retain log records in the aggregation backend (Loki). "
+            "Mirrors the retention_period in monitoring/loki-config.yml (1 day = 24h). "
+            "Update both values together when changing retention. "
+            "Set via LOG_RETENTION_DAYS env var."
+        ),
+        validation_alias=AliasChoices("LOG_RETENTION_DAYS", "CLAIM_AGENT_LOG_RETENTION_DAYS"),
+    )
 
 
 class PathsConfig(BaseSettings):
@@ -1984,6 +1994,15 @@ class ReverseImageRestConfig(_CircuitBreakerFields):
         ge=1.0,
         le=300.0,
         description="Request timeout seconds (larger for image upload and processing)",
+    )
+    scrub_exif_before_upload: bool = Field(
+        default=True,
+        description=(
+            "When true, strip EXIF/metadata from JPEG/PNG/WebP bytes in the REST adapter "
+            "before multipart upload (requires Pillow). Env: "
+            "REVERSE_IMAGE_REST_SCRUB_EXIF_BEFORE_UPLOAD=false to send raw bytes if the "
+            "provider requires metadata."
+        ),
     )
 
 

@@ -63,6 +63,7 @@ class RestGapInsuranceAdapter(GapInsuranceAdapter):
             timeout=timeout,
             circuit_failure_threshold=circuit_failure_threshold,
             circuit_recovery_timeout=circuit_recovery_timeout,
+            adapter_name="gap_insurance",
         )
         self._submit_path = submit_path
         self._status_path_template = status_path_template.strip()

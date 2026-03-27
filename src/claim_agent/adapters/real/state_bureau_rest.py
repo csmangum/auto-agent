@@ -54,9 +54,26 @@ class RestStateBureauAdapter(StateBureauAdapter):
                 timeout=self._timeout,
                 circuit_failure_threshold=self._circuit_failure_threshold,
                 circuit_recovery_timeout=self._circuit_recovery_timeout,
+                adapter_name=f"state_bureau_{state_code}",
             )
             self._clients[state_code] = client
         return client
+
+    def health_check(self) -> tuple[bool, str]:
+        """Probe each configured state bureau base URL for liveness."""
+        if not self._state_endpoints:
+            return False, "no state bureau endpoints configured"
+        parts: list[str] = []
+        all_ok = True
+        for code in sorted(self._state_endpoints.keys()):
+            client = self._get_client_for_state(code)
+            ok, msg = client.health_check_with_fallback()
+            if not ok:
+                all_ok = False
+                parts.append(f"{code}:{msg}")
+        if all_ok:
+            return True, "ok"
+        return False, "; ".join(parts)
 
     def submit_fraud_report(
         self,

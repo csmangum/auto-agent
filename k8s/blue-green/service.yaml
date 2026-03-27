@@ -1,0 +1,39 @@
+# Blue/Green Service for claim-agent
+#
+# This service routes traffic to the active deployment slot (blue or green).
+# The active slot is controlled by the `deployment-slot` selector.
+#
+# To switch traffic from blue to green (after the green deployment is healthy):
+#
+#   kubectl patch service claim-agent-active -n claim-agent \
+#     --type=json \
+#     -p '[{"op":"add","path":"/spec/selector/deployment-slot","value":"green"}]'
+#
+# Or use the helper script:
+#   scripts/blue_green_switch.sh green
+#
+# Apply alongside the blue/green deployments:
+#   kubectl apply -f k8s/blue-green/
+apiVersion: v1
+kind: Service
+metadata:
+  name: claim-agent-active
+  namespace: claim-agent
+  labels:
+    app.kubernetes.io/name: claim-agent
+    app.kubernetes.io/component: backend
+  annotations:
+    # Tracks which slot is currently live. Updated automatically by blue_green_switch.sh.
+    deployment.claim-agent/active-slot: "blue"
+spec:
+  type: ClusterIP
+  # Change `deployment-slot` to "green" to cut over to the green slot.
+  selector:
+    app.kubernetes.io/name: claim-agent
+    app.kubernetes.io/component: backend
+    deployment-slot: blue
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
