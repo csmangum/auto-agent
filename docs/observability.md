@@ -131,6 +131,113 @@ Loki compaction runs every 10 minutes and purges chunks older than the retention
   `loki-config.yml` with an S3-compatible store (`s3`, `gcs`, or `azure`).
 - Promtail requires read access to the Docker socket (`/var/run/docker.sock`). In environments
   where this is restricted, switch Promtail to scrape log files from a shared volume instead.
+- **Kubernetes deployments:** the Docker socket is not available in Kubernetes. See
+  [Kubernetes log shipping](#kubernetes-log-shipping) below for the Kubernetes-native Promtail
+  configuration.
+
+## Kubernetes log shipping
+
+Operators running claim-agent on Kubernetes (using the manifests in `k8s/` or the Helm chart in
+`helm/claim-agent/`) cannot use the Docker socket-based Promtail configuration from
+`monitoring/promtail-config.yml`. Instead, Promtail must run as a **DaemonSet** and read pod logs
+directly from the host filesystem (`/var/log/pods/`).
+
+The file **`monitoring/promtail-config-k8s.yml.example`** is a ready-to-use Promtail configuration
+that provides the same JSON log pipeline (label extraction for `level`, `claim_type`, `logger`) and
+the same LogQL query patterns as the Docker Compose setup, adapted for Kubernetes:
+
+| Feature | Docker Compose | Kubernetes |
+|---------|---------------|-----------|
+| Discovery | `docker_sd_configs` (socket) | `kubernetes_sd_configs` (role: pod) |
+| Log path | Docker daemon buffer | `/var/log/pods/…` on each node |
+| Deployment | Single container in Compose | DaemonSet + RBAC |
+| CRI parsing | Not needed | `cri: {}` stage strips containerd/CRI-O envelope |
+
+### Quick start (Helm)
+
+```bash
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+
+# Deploy Loki (single-binary mode for a small cluster)
+helm upgrade --install loki grafana/loki \
+  --namespace monitoring --create-namespace \
+  --set loki.auth_enabled=false \
+  --set loki.commonConfig.replication_factor=1 \
+  --set loki.storage.type=filesystem
+
+# Deploy Promtail as a DaemonSet using the claim-agent example config
+helm upgrade --install promtail grafana/promtail \
+  --namespace monitoring \
+  --set "config.clients[0].url=http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push" \
+  --values monitoring/promtail-config-k8s.yml.example
+```
+
+### Required RBAC
+
+The Promtail ServiceAccount needs read access to pod metadata for discovery:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: promtail
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/proxy", "pods"]
+    verbs: ["get", "watch", "list"]
+```
+
+The `grafana/promtail` Helm chart creates this automatically.
+
+### DaemonSet volume mounts
+
+Promtail reads host log files via a `hostPath` volume:
+
+```yaml
+volumes:
+  - name: varlogpods
+    hostPath:
+      path: /var/log/pods
+  - name: positions
+    emptyDir: {}       # use hostPath for persistence across pod restarts
+
+volumeMounts:
+  - name: varlogpods
+    mountPath: /var/log/pods
+    readOnly: true
+  - name: positions
+    mountPath: /run/promtail
+```
+
+### Querying logs (same LogQL patterns)
+
+After deploying Promtail on Kubernetes the Loki labels and LogQL patterns are identical to the
+Docker Compose setup:
+
+| Query | Description |
+|-------|-------------|
+| `{job="claim-agent"}` | All claim-agent logs |
+| `{job="claim-agent", level="ERROR"}` | Errors only |
+| `{job="claim-agent"} \| json \| claim_id="CLM-12345"` | Single claim trace |
+| `{job="claim-agent"} \| json \| claim_type="fraud"` | All fraud-type claims |
+| `{job="claim-agent"} \|= "escalat"` | Escalation events |
+
+Additional labels available on Kubernetes (not present in the Docker Compose setup):
+
+| Label | Example value | Description |
+|-------|---------------|-------------|
+| `namespace` | `claim-agent` | Kubernetes namespace |
+| `pod` | `claim-agent-7d9c8b-xkpqz` | Pod name |
+| `node` | `ip-10-0-1-42` | Node name |
+| `container` | `claim-agent` | Container name |
+
+### Configuration file reference
+
+| File | Purpose |
+|------|---------|
+| `monitoring/promtail-config.yml` | Docker Compose / Docker socket log shipping |
+| `monitoring/promtail-config-k8s.yml.example` | Kubernetes DaemonSet log shipping (this section) |
 
 ### Loki security: auth and tenant hardening
 
