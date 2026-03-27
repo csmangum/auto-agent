@@ -136,6 +136,7 @@ case "$SUBCOMMAND" in
       --replicas="$CANARY_REPLICAS"
 
     if ! $DRY_RUN; then
+      wait_for_deployment "$STABLE_DEPLOY"
       wait_for_deployment "$CANARY_DEPLOY"
       log "✓ Canary at ~${CANARY_WEIGHT_PCT}% traffic"
     fi
