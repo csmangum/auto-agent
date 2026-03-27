@@ -3,10 +3,12 @@
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Any, NoReturn
 
-from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from fastapi import HTTPException, UploadFile
+from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import text
 
 from claim_agent.api.auth import AuthContext
 from claim_agent.api.claim_access import adjuster_identity_scopes_assignee
@@ -14,25 +16,24 @@ from claim_agent.config import get_settings
 from claim_agent.context import ClaimContext
 from claim_agent.crews.main_crew import run_claim_workflow
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
-from claim_agent.db.constants import STATUS_FAILED, STATUS_NEEDS_REVIEW
-from claim_agent.db.database import get_db_path
+from claim_agent.db.constants import (
+    STATUS_FAILED,
+    STATUS_NEEDS_REVIEW,
+    STATUS_PENDING,
+    STATUS_PROCESSING,
+)
+from claim_agent.db.database import get_connection, get_db_path, row_to_dict
+from claim_agent.db.document_repository import DocumentRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.exceptions import ClaimAlreadyProcessingError, InvalidClaimTransitionError
-from claim_agent.models.document import DocumentType
+from claim_agent.models.claim import Attachment, ClaimInput
+from claim_agent.models.document import DocumentRequestStatus, DocumentType
 from claim_agent.storage import get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.storage.s3 import S3StorageAdapter
-from claim_agent.utils.sanitization import _is_safe_attachment_url, sanitize_claim_data
-from claim_agent.db.database import get_connection, row_to_dict
-from claim_agent.db.document_repository import DocumentRepository
-from claim_agent.models.claim import Attachment, ClaimInput
-from claim_agent.models.document import DocumentRequestStatus
 from claim_agent.utils import attachment_type_to_document_type, infer_attachment_type
-from claim_agent.db.constants import STATUS_PENDING, STATUS_PROCESSING
+from claim_agent.utils.sanitization import is_safe_attachment_url, sanitize_claim_data
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
-from fastapi import HTTPException, UploadFile
-from pydantic import ValidationError
-from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -270,7 +271,7 @@ def resolve_attachment_urls(
             url = attachment.get("url", "")
             if not url:
                 continue
-            if not _is_safe_attachment_url(url):
+            if not is_safe_attachment_url(url):
                 attachment["url"] = "#"
                 continue
             if url.startswith(("http://", "https://")):
@@ -317,7 +318,6 @@ def maybe_update_document_request_on_receipt(
     document_type: str,
 ) -> None:
     """When a document is received, update matching pending document_request and complete linked tasks."""
-    from datetime import datetime, timezone
     pending = doc_repo.find_pending_document_requests_for_type(claim_id, document_type)
     if not pending:
         return
@@ -343,7 +343,7 @@ def maybe_update_document_request_on_receipt(
 def sanitize_incident_data(incident_dict: dict) -> dict:
     """Sanitize incident input data to prevent prompt injection and abuse."""
     sanitized: dict[str, Any] = {}
-    
+
     for key, value in incident_dict.items():
         if key == "incident_description":
             sanitized[key] = sanitize_claim_data({"incident_description": value}).get("incident_description", "")
@@ -373,7 +373,7 @@ def sanitize_incident_data(incident_dict: dict) -> dict:
                 sanitized[key] = []
         else:
             sanitized[key] = value
-    
+
     return sanitized
 
 
@@ -385,11 +385,9 @@ async def process_claim_with_attachments(
     ctx: ClaimContext,
 ) -> tuple[str, dict]:
     """Shared helper for claim creation and attachment handling.
-    
+
     Returns: tuple of (claim_id, claim_data_with_attachments)
     """
-    import json
-    
     if isinstance(claim, ClaimInput):
         claim_data = claim.model_dump()
     else:
@@ -495,7 +493,6 @@ def prepare_claim_for_workflow(
 
 async def stream_claim_updates(claim_id: str):
     """SSE generator: poll claim, history, workflows and yield updates."""
-    import json
     elapsed = 0.0
 
     def _fetch_claim_snapshot():

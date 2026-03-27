@@ -3078,15 +3078,15 @@ class TestPostClaimsJson:
         import claim_agent.storage.factory as factory_mod
 
         monkeypatch.setattr(factory_mod, "_storage_instance", None)
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes._claims_helpers as claims_helpers_mod
         from claim_agent.config import get_settings
 
         settings = get_settings()
         monkeypatch.setattr(settings, "max_concurrent_background_tasks", 1)
 
-        # Wrap _background_tasks so len() reports 1 (at capacity). TestClient waits for
+        # Wrap background_tasks so len() reports 1 (at capacity). TestClient waits for
         # background tasks before returning, so we can't rely on a previous request's task.
-        real_tasks = claims_mod._background_tasks
+        real_tasks = claims_helpers_mod.background_tasks
 
         class AtCapacitySet:
             def add(self, x):
@@ -3098,7 +3098,7 @@ class TestPostClaimsJson:
             def __len__(self):
                 return len(real_tasks) + 1
 
-        monkeypatch.setattr(claims_mod, "_background_tasks", AtCapacitySet())
+        monkeypatch.setattr(claims_helpers_mod, "background_tasks", AtCapacitySet())
 
         resp = client.post("/api/v1/claims", json=VALID_CLAIM_PAYLOAD, params={"async": "true"})
         assert resp.status_code == 503
@@ -3121,6 +3121,7 @@ class TestGenerateClaimEndpoint:
 
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
         import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes._claims_helpers as claims_helpers_mod
         from claim_agent.config import get_settings
 
         settings = get_settings()
@@ -3131,7 +3132,7 @@ class TestGenerateClaimEndpoint:
             lambda _: ClaimInput.model_validate(VALID_CLAIM_PAYLOAD),
         )
 
-        real_tasks = claims_mod._background_tasks
+        real_tasks = claims_helpers_mod.background_tasks
 
         class AtCapacitySet:
             def add(self, x):
@@ -3143,7 +3144,7 @@ class TestGenerateClaimEndpoint:
             def __len__(self):
                 return len(real_tasks) + 1
 
-        monkeypatch.setattr(claims_mod, "_background_tasks", AtCapacitySet())
+        monkeypatch.setattr(claims_helpers_mod, "background_tasks", AtCapacitySet())
 
         resp = client.post(
             "/api/v1/claims/generate",
@@ -3670,12 +3671,12 @@ class TestProcessClaimAsyncEndpoint:
     ):
         """POST /claims/process/async returns 503 when at capacity and does NOT create a claim."""
         monkeypatch.setenv("ATTACHMENT_STORAGE_PATH", str(tmp_path / "attachments"))
-        import claim_agent.api.routes.claims as claims_mod
+        import claim_agent.api.routes._claims_helpers as claims_helpers_mod
         from claim_agent.config import get_settings
 
         settings = get_settings()
         monkeypatch.setattr(settings, "max_concurrent_background_tasks", 1)
-        real_tasks = claims_mod._background_tasks
+        real_tasks = claims_helpers_mod.background_tasks
 
         class AtCapacitySet:
             def add(self, x):
@@ -3687,7 +3688,7 @@ class TestProcessClaimAsyncEndpoint:
             def __len__(self):
                 return len(real_tasks) + 1
 
-        monkeypatch.setattr(claims_mod, "_background_tasks", AtCapacitySet())
+        monkeypatch.setattr(claims_helpers_mod, "background_tasks", AtCapacitySet())
 
         with get_connection() as conn:
             count_before = conn.execute(text("SELECT COUNT(*) as c FROM claims")).fetchone()[0]

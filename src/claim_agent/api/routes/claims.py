@@ -1,11 +1,9 @@
 """Claims API routes: listing, detail, audit log, workflow runs, statistics."""
 
 import asyncio
-import json
 import logging
 import math
-from datetime import datetime, timezone
-from typing import Any, Literal, NoReturn, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -41,11 +39,8 @@ from claim_agent.db.constants import (
     DISPUTABLE_STATUSES,
     SIU_INVESTIGATION_STATUSES,
     STATUS_ARCHIVED,
-    STATUS_FAILED,
     STATUS_PURGED,
     STATUS_NEEDS_REVIEW,
-    STATUS_PENDING,
-    STATUS_PROCESSING,
     THIRD_PARTY_PORTAL_ELIGIBLE_PARTY_TYPES,
     VALID_REPAIR_STATUSES,
 )
@@ -55,9 +50,9 @@ from claim_agent.db.database import get_connection, get_db_path, row_to_dict
 from claim_agent.db.incident_repository import IncidentRepository
 from claim_agent.db.repository import ClaimRepository
 from claim_agent.db.repair_status_repository import RepairStatusRepository
-from claim_agent.db.document_repository import DocumentRepository, build_document_version_groups
+from claim_agent.db.document_repository import build_document_version_groups
 from claim_agent.workflow.helpers import WORKFLOW_STAGES
-from claim_agent.models.claim import Attachment, ClaimInput, ClaimRecord
+from claim_agent.models.claim import ClaimInput, ClaimRecord
 from claim_agent.models.party import PartyRelationshipType
 from claim_agent.models.incident import (
     BIAllocationInput,
@@ -87,8 +82,6 @@ from claim_agent.utils.sanitization import (
     MAX_DENIAL_REASON,
     MAX_PAYOUT,
     MAX_POLICYHOLDER_EVIDENCE,
-    _is_safe_attachment_url,
-    sanitize_claim_data,
 )
 from claim_agent.workflow.denial_coverage_orchestrator import run_denial_coverage_workflow
 from claim_agent.workflow.dispute_orchestrator import run_dispute_workflow
@@ -98,288 +91,37 @@ from claim_agent.mock_crew.claim_generator import (
     generate_claim_from_prompt,
     generate_incident_damage_from_vehicle,
 )
+import claim_agent.api.routes._claims_helpers as _claims_helpers
+from claim_agent.api.routes._claims_helpers import (
+    ALLOWED_DOCUMENT_EXTENSIONS as _ALLOWED_DOCUMENT_EXTENSIONS,
+    ALLOWED_SORT_FIELDS as _ALLOWED_SORT_FIELDS,
+    GenerateClaimRequest,
+    GenerateIncidentDetailsRequest,
+    PRIORITY_VALUES,
+    VALID_DOCUMENT_TYPES as _VALID_DOCUMENT_TYPES,
+    adjuster_scope_params as _adjuster_scope_params,
+    apply_adjuster_claim_filter as _apply_adjuster_claim_filter,
+    get_approve_lock as _get_approve_lock,
+    get_claim_context,
+    get_doc_repo as _get_doc_repo,
+    http_already_processing as _http_already_processing,
+    max_upload_file_size_bytes as _max_upload_file_size_bytes,
+    maybe_update_document_request_on_receipt as _maybe_update_document_request_on_receipt,
+    process_claim_with_attachments as _process_claim_with_attachments,
+    resolve_attachment_urls as _resolve_attachment_urls,
+    run_workflow_background as _run_workflow_background,
+    sanitize_incident_data as _sanitize_incident_data,
+    stream_claim_updates as _stream_claim_updates,
+    try_run_workflow_background as _try_run_workflow_background,
+    upload_file_size_exceeded_detail as _upload_file_size_exceeded_detail,
+)
 
 logger = logging.getLogger(__name__)
-
-# Retry-After (seconds) hint when a claim is already being processed (HTTP 409).
-_CLAIM_ALREADY_PROCESSING_RETRY_AFTER = "30"
-
-
-def _http_already_processing(exc: ClaimAlreadyProcessingError) -> NoReturn:
-    """Raise HTTP 409 for concurrent workflow; never returns."""
-    raise HTTPException(
-        status_code=409,
-        detail=str(exc),
-        headers={"Retry-After": _CLAIM_ALREADY_PROCESSING_RETRY_AFTER},
-    ) from exc
-
-
-class GenerateClaimRequest(BaseModel):
-    """Request body for Mock Crew claim generation."""
-
-    prompt: str = Field(
-        ...,
-        max_length=2000,
-        description="Natural-language description of the claim to generate",
-    )
-    submit: bool = Field(
-        default=True,
-        description="If true, submit the generated claim for processing via the workflow",
-    )
-
-
-class GenerateIncidentDetailsRequest(BaseModel):
-    """Request body for generating incident/damage details from vehicle info."""
-
-    vehicle_year: int = Field(..., ge=1900, le=2100, description="Vehicle year")
-    vehicle_make: str = Field(..., min_length=1, max_length=100, description="Vehicle make")
-    vehicle_model: str = Field(..., min_length=1, max_length=100, description="Vehicle model")
-    prompt: str = Field(
-        default="",
-        max_length=2000,
-        description="Optional scenario (e.g. parking lot fender bender)",
-    )
-
-
-def get_claim_context() -> ClaimContext:
-    """FastAPI dependency providing a per-request ClaimContext."""
-    return ClaimContext.from_defaults(db_path=get_db_path())
 
 router = APIRouter(tags=["claims"])
 
 RequireAdjuster = require_role("adjuster", "supervisor", "admin", "executive")
 RequireSupervisor = require_role("supervisor", "admin", "executive")
-
-
-def _max_upload_file_size_bytes() -> int:
-    """Per-file upload cap from settings (MAX_UPLOAD_FILE_SIZE_MB)."""
-    return get_settings().max_upload_file_size_mb * 1024 * 1024
-
-
-def _upload_file_size_exceeded_detail() -> str:
-    """HTTP 413 detail for per-file upload limit (shared by claims and portal routes)."""
-    mb = get_settings().max_upload_file_size_mb
-    return f"File exceeds the maximum upload size of {mb} MB."
-
-
-def _adjuster_scope_params(auth: AuthContext) -> dict[str, Any]:
-    """Query params for adjuster-only claim scoping (assignee matches JWT sub / API key identity)."""
-    if not adjuster_identity_scopes_assignee(auth):
-        return {}
-    return {"_scope_assignee": auth.identity}
-
-
-def _apply_adjuster_claim_filter(
-    auth: AuthContext, conditions: list[str], params: dict[str, Any]
-) -> None:
-    if adjuster_identity_scopes_assignee(auth):
-        conditions.append("assignee = :_scope_assignee")
-        params["_scope_assignee"] = auth.identity
-
-
-# Allowed document upload extensions (security: prevent executable/malicious uploads)
-_ALLOWED_DOCUMENT_EXTENSIONS = frozenset(
-    {"pdf", "jpg", "jpeg", "png", "gif", "webp", "heic", "doc", "docx", "xls", "xlsx"}
-)
-
-# Valid document types for validation
-_VALID_DOCUMENT_TYPES = frozenset(dt.value for dt in DocumentType)
-
-_STREAM_POLL_INTERVAL = 1.0  # seconds between DB polls
-_STREAM_MAX_DURATION = 300  # 5 min timeout
-
-PRIORITY_VALUES = ("critical", "high", "medium", "low")
-
-_background_tasks: set[asyncio.Task] = set()
-_background_tasks_lock = asyncio.Lock()
-# Maps each in-flight background task to the claim_id it is processing.
-# Used by the graceful-shutdown handler to mark interrupted claims as failed.
-_task_claim_ids: dict[asyncio.Task, str] = {}
-
-# Per-claim locks to prevent concurrent approve requests from racing (same claim_id).
-# Note: In multi-process deployments, use a distributed lock (e.g. Redis) instead.
-# LRU eviction prevents unbounded memory growth in long-running processes.
-_approve_locks: dict[str, asyncio.Lock] = {}
-_approve_locks_lock = asyncio.Lock()
-_MAX_APPROVE_LOCKS = 10000
-
-
-async def _get_approve_lock(claim_id: str) -> asyncio.Lock:
-    """Get or create a lock for the given claim_id."""
-    async with _approve_locks_lock:
-        if claim_id not in _approve_locks:
-            if len(_approve_locks) >= _MAX_APPROVE_LOCKS:
-                # Evict oldest entry (FIFO eviction for simplicity)
-                _approve_locks.pop(next(iter(_approve_locks)))
-            _approve_locks[claim_id] = asyncio.Lock()
-        return _approve_locks[claim_id]
-
-
-def _run_workflow_background(
-    claim_id: str,
-    claim_data_with_attachments: dict,
-    actor_id: str,
-    ctx: ClaimContext | None = None,
-) -> asyncio.Task:
-    """Run claim workflow in background. Returns task for tracking."""
-    bg_ctx = ctx or ClaimContext.from_defaults(db_path=get_db_path())
-
-    async def run_in_thread():
-        try:
-            await asyncio.to_thread(
-                run_claim_workflow,
-                claim_data_with_attachments,
-                None,
-                claim_id,
-                actor_id=actor_id,
-                ctx=bg_ctx,
-            )
-        except ClaimAlreadyProcessingError:
-            logger.warning(
-                "Claim %s is already being processed; background workflow skipped",
-                claim_id,
-            )
-        except InvalidClaimTransitionError as exc:
-            logger.warning(
-                "Invalid claim transition in background workflow for claim_id %s",
-                claim_id,
-                exc_info=True,
-            )
-            try:
-                bg_ctx.repo.update_claim_status(
-                    claim_id,
-                    STATUS_NEEDS_REVIEW,
-                    details=(
-                        f"Invalid claim transition in background workflow: "
-                        f"{exc.from_status!r} -> {exc.to_status!r} — {exc.reason}"
-                    ),
-                    actor_id=ACTOR_WORKFLOW,
-                    skip_validation=True,
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to mark claim %s as needs_review after invalid transition",
-                    claim_id,
-                )
-        except Exception:
-            logger.exception(
-                "Unhandled exception in background workflow for claim_id %s", claim_id
-            )
-            try:
-                bg_ctx.repo.update_claim_status(
-                    claim_id,
-                    STATUS_FAILED,
-                    details="Background workflow failed",
-                    actor_id=ACTOR_WORKFLOW,
-                    skip_validation=True,
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to mark claim %s as failed after workflow error", claim_id
-                )
-
-    task = asyncio.create_task(run_in_thread())
-    _background_tasks.add(task)
-    _task_claim_ids[task] = claim_id
-
-    def _on_done(t: asyncio.Task) -> None:
-        # asyncio is single-threaded; callbacks run between coroutine awaits, so
-        # there is no concurrent modification risk with the shutdown handler which
-        # snapshots `claim_background_tasks` before iterating.
-        _background_tasks.discard(t)
-        _task_claim_ids.pop(t, None)
-
-    task.add_done_callback(_on_done)
-    return task
-
-
-async def _try_run_workflow_background(
-    claim_id: str,
-    claim_data_with_attachments: dict,
-    actor_id: str,
-    ctx: ClaimContext | None = None,
-) -> asyncio.Task | None:
-    """Run claim workflow in background if under concurrent limit. Returns None when at capacity."""
-    max_tasks = get_settings().max_concurrent_background_tasks
-    async with _background_tasks_lock:
-        if max_tasks > 0 and len(_background_tasks) >= max_tasks:
-            return None
-        return _run_workflow_background(
-            claim_id, claim_data_with_attachments, actor_id, ctx=ctx,
-        )
-
-
-def _resolve_attachment_urls(
-    claim_dict: dict,
-    *,
-    repo: ClaimRepository | None = None,
-    actor_id: str | None = None,
-    audit_presigned: bool = False,
-) -> dict:
-    """Convert storage keys to fetchable URLs: presigned for S3, download endpoint for local.
-
-    When ``audit_presigned`` is true and storage is S3, appends ``document_accessed`` audit rows
-    for each issued presigned URL (chain of custody). List/review-queue and SSE callers should
-    leave ``audit_presigned`` false to avoid log flooding and per-row DB writes.
-    """
-    if "attachments" not in claim_dict or not claim_dict["attachments"]:
-        return claim_dict
-
-    do_audit = False
-    try:
-        raw = claim_dict["attachments"]
-        attachments = (
-            json.loads(raw) if isinstance(raw, str) else raw
-        )
-        if not attachments:
-            return claim_dict
-
-        storage = get_storage_adapter()
-        claim_id = claim_dict.get("id", "")
-        do_audit = (
-            audit_presigned
-            and repo is not None
-            and actor_id is not None
-            and isinstance(storage, S3StorageAdapter)
-        )
-
-        for attachment in attachments:
-            url = attachment.get("url", "")
-            if not url:
-                continue
-            if not _is_safe_attachment_url(url):
-                attachment["url"] = "#"
-                continue
-            if url.startswith(("http://", "https://")):
-                continue
-            if isinstance(storage, LocalStorageAdapter):
-                stored_name = url.split("/")[-1] if "/" in url else url
-                attachment["url"] = f"/api/v1/claims/{claim_id}/attachments/{stored_name}"
-            else:
-                storage_key = url
-                attachment["url"] = storage.get_url(claim_id, url)
-                if do_audit:
-                    assert repo is not None and actor_id is not None
-                    repo.insert_document_accessed_audit(
-                        claim_id,
-                        storage_key=storage_key,
-                        actor_id=actor_id,
-                        channel="adjuster_api",
-                    )
-
-        claim_dict["attachments"] = (
-            json.dumps(attachments) if isinstance(raw, str) else attachments
-        )
-    except Exception as e:
-        if do_audit:
-            raise
-        logger.warning(
-            "Failed to resolve attachment URLs for claim %s: %s",
-            claim_dict.get("id"),
-            e,
-        )
-
-    return claim_dict
 
 
 @router.get("/claims/stats")
@@ -443,20 +185,6 @@ def get_claims_stats(auth: AuthContext = RequireAdjuster):
         "total_audit_events": audit_count,
         "total_workflow_runs": workflow_count,
     }
-
-
-_ALLOWED_SORT_FIELDS: frozenset[str] = frozenset(
-    {
-        "created_at",
-        "updated_at",
-        "incident_date",
-        "estimated_damage",
-        "payout_amount",
-        "status",
-        "claim_type",
-        "policy_number",
-    }
-)
 
 
 @router.get("/claims", dependencies=[RequireAdjuster])
@@ -1305,40 +1033,6 @@ def get_claim_attachment(
     return FileResponse(path=str(file_path), filename=key)
 
 
-def _get_doc_repo():
-    """Document repository with default db path."""
-    return DocumentRepository(db_path=get_db_path())
-
-
-def _maybe_update_document_request_on_receipt(
-    doc_repo: DocumentRepository,
-    claim_repo,
-    claim_id: str,
-    document_type: str,
-) -> None:
-    """When a document is received, update matching pending document_request and complete linked tasks."""
-    pending = doc_repo.find_pending_document_requests_for_type(claim_id, document_type)
-    if not pending:
-        return
-    req = pending[0]
-    req_id = req.get("id")
-    if not req_id:
-        return
-    doc_repo.update_document_request(
-        req_id,
-        status=DocumentRequestStatus.RECEIVED,
-        received_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    )
-    with get_connection() as conn:
-        rows = conn.execute(
-            text("SELECT id FROM claim_tasks WHERE document_request_id = :req_id AND status NOT IN ('completed', 'cancelled')"),
-            {"req_id": req_id},
-        ).fetchall()
-        for row in rows:
-            task_id = row_to_dict(row)["id"]
-            claim_repo.update_task(task_id, status="completed", resolution_notes="Document received")
-
-
 @router.get("/claims/{claim_id}/documents", dependencies=[RequireAdjuster])
 def list_claim_documents(
     claim_id: str,
@@ -1914,8 +1608,8 @@ async def generate_and_submit_claim(
     try:
         if async_mode:
             max_tasks = get_settings().max_concurrent_background_tasks
-            async with _background_tasks_lock:
-                if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+            async with _claims_helpers.background_tasks_lock:
+                if max_tasks > 0 and len(_claims_helpers.background_tasks) >= max_tasks:
                     release_idempotency_on_error(idem_key)
                     raise HTTPException(
                         status_code=503,
@@ -2004,8 +1698,8 @@ async def create_claim(
     try:
         if async_mode:
             max_tasks = get_settings().max_concurrent_background_tasks
-            async with _background_tasks_lock:
-                if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+            async with _claims_helpers.background_tasks_lock:
+                if max_tasks > 0 and len(_claims_helpers.background_tasks) >= max_tasks:
                     release_idempotency_on_error(idem_key)
                     raise HTTPException(
                         status_code=503,
@@ -2040,50 +1734,6 @@ async def create_claim(
     except Exception:
         release_idempotency_on_error(idem_key)
         raise
-
-
-def _sanitize_incident_data(incident_dict: dict) -> dict:
-    """Sanitize incident input data to prevent prompt injection and abuse.
-
-    Applies sanitization to incident-level and vehicle-level claim data
-    before creating claims via the incident repository.
-    """
-    sanitized: dict[str, Any] = {}
-    
-    # Sanitize incident-level fields
-    for key, value in incident_dict.items():
-        if key == "incident_description":
-            sanitized[key] = sanitize_claim_data({"incident_description": value}).get("incident_description", "")
-        elif key == "loss_state":
-            sanitized[key] = sanitize_claim_data({"loss_state": value}).get("loss_state")
-        elif key == "vehicles":
-            # Sanitize each vehicle's claim data
-            if isinstance(value, list):
-                sanitized_vehicles = []
-                for vehicle in value:
-                    if isinstance(vehicle, dict):
-                        # Convert vehicle to claim-like dict for sanitization
-                        vehicle_claim_dict = {
-                            "policy_number": vehicle.get("policy_number"),
-                            "vin": vehicle.get("vin"),
-                            "vehicle_year": vehicle.get("vehicle_year"),
-                            "vehicle_make": vehicle.get("vehicle_make"),
-                            "vehicle_model": vehicle.get("vehicle_model"),
-                            "damage_description": vehicle.get("damage_description"),
-                            "estimated_damage": vehicle.get("estimated_damage"),
-                            "attachments": vehicle.get("attachments", []),
-                            "loss_state": vehicle.get("loss_state"),
-                            "parties": vehicle.get("parties", []),
-                        }
-                        sanitized_vehicle_dict = sanitize_claim_data(vehicle_claim_dict)
-                        sanitized_vehicles.append(sanitized_vehicle_dict)
-                sanitized[key] = sanitized_vehicles
-            else:
-                sanitized[key] = []
-        else:
-            sanitized[key] = value
-    
-    return sanitized
 
 
 @router.post("/incidents", response_model=IncidentOutput)
@@ -2276,8 +1926,8 @@ async def process_claim(
     try:
         if async_mode:
             max_tasks = get_settings().max_concurrent_background_tasks
-            async with _background_tasks_lock:
-                if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+            async with _claims_helpers.background_tasks_lock:
+                if max_tasks > 0 and len(_claims_helpers.background_tasks) >= max_tasks:
                     release_idempotency_on_error(idem_key)
                     raise HTTPException(
                         status_code=503,
@@ -2314,130 +1964,6 @@ async def process_claim(
         raise
 
 
-async def _process_claim_with_attachments(
-    claim: str | ClaimInput,
-    files: Optional[list[UploadFile]],
-    actor_id: str,
-    *,
-    ctx: ClaimContext,
-) -> tuple[str, dict]:
-    """Shared helper for claim creation and attachment handling.
-
-    Accepts either a JSON string (from form uploads) or an already-validated ClaimInput
-    (from POST /api/claims JSON body). Sanitization and validation run once.
-
-    Returns:
-        tuple of (claim_id, claim_data_with_attachments)
-    """
-    if isinstance(claim, ClaimInput):
-        claim_data = claim.model_dump()
-    else:
-        try:
-            claim_data = json.loads(claim)
-        except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid claim JSON: {e}") from e
-
-    sanitized = sanitize_claim_data(claim_data)
-    try:
-        claim_input = ClaimInput.model_validate(sanitized)
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid claim data: {e}") from e
-
-    repo = ctx.repo
-
-    # Validate and buffer all file uploads BEFORE creating the claim record so
-    # that a bad upload (oversized or empty) does not leave a dangling claim row.
-    buffered_files: list[tuple[str, bytes, str | None]] = []
-    if files:
-        for f in files:
-            if not f.filename:
-                continue
-            # Read in bounded chunks to enforce the size limit without loading
-            # an arbitrarily large file into memory.
-            chunks: list[bytes] = []
-            total_size = 0
-            chunk_size = 1024 * 1024  # 1 MB
-            while True:
-                chunk = await f.read(chunk_size)
-                if not chunk:
-                    break
-                total_size += len(chunk)
-                if total_size > _max_upload_file_size_bytes():
-                    max_mb = get_settings().max_upload_file_size_mb
-                    raise HTTPException(
-                        status_code=413,
-                        detail=(
-                            f"File '{f.filename}' exceeds the maximum upload size of {max_mb} MB."
-                        ),
-                    )
-                chunks.append(chunk)
-            buffered_files.append((f.filename, b"".join(chunks), f.content_type))
-
-    # Create claim record first, then store uploaded files.
-    claim_id = repo.create_claim(claim_input, actor_id=actor_id)
-
-    all_attachments = list(claim_input.attachments)
-    doc_repo = DocumentRepository(db_path=get_db_path())
-    if buffered_files:
-        # Store uploaded files now that the claim record exists.
-        storage = get_storage_adapter()
-        for filename, content, content_type in buffered_files:
-            stored_key = storage.save(
-                claim_id=claim_id,
-                filename=filename,
-                content=content,
-                content_type=content_type,
-            )
-            url = storage.get_url(claim_id, stored_key)
-            if isinstance(storage, S3StorageAdapter):
-                repo.insert_document_accessed_audit(
-                    claim_id,
-                    storage_key=stored_key,
-                    actor_id=actor_id,
-                    channel="adjuster_api",
-                )
-            atype = infer_attachment_type(filename)
-            all_attachments.append(
-                Attachment(url=url, type=atype, description=f"Uploaded: {filename}")
-            )
-            doc_type = attachment_type_to_document_type(atype)
-            doc_repo.add_document(
-                claim_id,
-                stored_key,
-                document_type=doc_type,
-                received_from="claimant",
-            )
-            _maybe_update_document_request_on_receipt(doc_repo, repo, claim_id, doc_type.value)
-        if all_attachments:
-            repo.update_claim_attachments(claim_id, all_attachments, actor_id=actor_id)
-
-    claim_data_with_attachments = _prepare_claim_for_workflow(
-        claim_id, sanitized, all_attachments
-    )
-    return claim_id, claim_data_with_attachments
-
-
-def _prepare_claim_for_workflow(
-    claim_id: str,
-    sanitized: dict,
-    all_attachments: list,
-) -> dict:
-    """Build claim_data_with_attachments for run_claim_workflow."""
-    attachments_for_workflow = []
-    storage = get_storage_adapter()
-    for a in all_attachments:
-        url = a.url if hasattr(a, "url") else a.get("url", "")
-        if isinstance(storage, LocalStorageAdapter) and url and not url.startswith(
-            ("http://", "https://", "file://")
-        ):
-            path = storage.get_path(claim_id, url)
-            if path.exists():
-                url = f"file://{path.resolve()}"
-        att = a.model_dump(mode="json") if hasattr(a, "model_dump") else a
-        attachments_for_workflow.append({**att, "url": url})
-    return {**sanitized, "attachments": attachments_for_workflow}
-
-
 @router.post("/claims/process/async")
 async def process_claim_async(
     request: Request,
@@ -2454,8 +1980,8 @@ async def process_claim_async(
 
     try:
         max_tasks = get_settings().max_concurrent_background_tasks
-        async with _background_tasks_lock:
-            if max_tasks > 0 and len(_background_tasks) >= max_tasks:
+        async with _claims_helpers.background_tasks_lock:
+            if max_tasks > 0 and len(_claims_helpers.background_tasks) >= max_tasks:
                 release_idempotency_on_error(idem_key)
                 raise HTTPException(
                     status_code=503,
@@ -2475,92 +2001,6 @@ async def process_claim_async(
     except Exception:
         release_idempotency_on_error(idem_key)
         raise
-
-
-async def _stream_claim_updates(claim_id: str):
-    """SSE generator: poll claim, history, workflows and yield updates."""
-    elapsed = 0.0
-
-    def _fetch_claim_snapshot():
-        """Fetch claim + audit log + workflow runs + stage progress in one DB transaction.
-
-        Intended to be called via asyncio.to_thread so that SQLite access
-        does not block the event loop.
-        """
-        db_path = get_db_path()
-        with get_connection(db_path) as conn:
-            claim_row = conn.execute(
-                text("SELECT * FROM claims WHERE id = :claim_id"),
-                {"claim_id": claim_id},
-            ).fetchone()
-            if claim_row is None:
-                return None, None, None, None
-
-            claim_dict = row_to_dict(claim_row)
-            _resolve_attachment_urls(claim_dict)
-
-            history_rows = conn.execute(
-                text("SELECT id, claim_id, action, old_status, new_status, details, actor_id, created_at "
-                     "FROM claim_audit_log WHERE claim_id = :claim_id ORDER BY id ASC"),
-                {"claim_id": claim_id},
-            ).fetchall()
-
-            wf_rows = conn.execute(
-                text("SELECT * FROM workflow_runs WHERE claim_id = :claim_id ORDER BY id ASC"),
-                {"claim_id": claim_id},
-            ).fetchall()
-
-            cp_rows = conn.execute(
-                text("""
-                SELECT stage_key FROM task_checkpoints
-                WHERE claim_id = :claim_id AND workflow_run_id = (
-                    SELECT workflow_run_id FROM task_checkpoints
-                    WHERE claim_id = :claim_id ORDER BY id DESC LIMIT 1
-                )
-                """),
-                {"claim_id": claim_id},
-            ).fetchall()
-            completed_stages = []
-            for r in cp_rows:
-                d = row_to_dict(r)
-                sk = d["stage_key"]
-                stage = sk.split(":")[0] if ":" in sk else sk
-                if stage in WORKFLOW_STAGES:
-                    completed_stages.append(sk)
-            completed_stages.sort(
-                key=lambda s: (
-                    WORKFLOW_STAGES.index(stg)
-                    if (stg := (s.split(":")[0] if ":" in s else s)) in WORKFLOW_STAGES
-                    else len(WORKFLOW_STAGES)
-                )
-            )
-
-        return claim_dict, history_rows, wf_rows, completed_stages
-
-    while elapsed < _STREAM_MAX_DURATION:
-        result = await asyncio.to_thread(_fetch_claim_snapshot)
-        claim_dict, history_rows, wf_rows, completed_stages = result
-        if claim_dict is None:
-            yield f"data: {json.dumps({'error': 'Claim not found'})}\n\n"
-            return
-
-        payload = {
-            "claim": claim_dict,
-            "history": [row_to_dict(r) for r in history_rows],
-            "workflows": [row_to_dict(r) for r in wf_rows],
-            "progress": completed_stages or [],
-        }
-        yield f"data: {json.dumps(payload)}\n\n"
-
-        status = claim_dict.get("status") or ""
-        if status not in (STATUS_PENDING, STATUS_PROCESSING):
-            yield f"data: {json.dumps({'done': True, 'status': status})}\n\n"
-            return
-
-        await asyncio.sleep(_STREAM_POLL_INTERVAL)
-        elapsed += _STREAM_POLL_INTERVAL
-
-    yield f"data: {json.dumps({'error': 'Stream timeout', 'elapsed': elapsed})}\n\n"
 
 
 @router.get("/claims/{claim_id}/stream")
