@@ -52,6 +52,83 @@ Controlled by `CLAIM_AGENT_LOG_FORMAT`:
 
 CLI option `--json` overrides to JSON format for the run. `--debug` sets log level to DEBUG.
 
+## Log Aggregation (Loki)
+
+The monitoring stack includes **Grafana Loki** for centralized log collection and **Promtail** as the log shipper.
+Start the full monitoring stack (Prometheus + Alertmanager + Grafana + **Loki** + **Promtail**) with:
+
+```bash
+docker compose --profile monitoring up
+```
+
+### Architecture
+
+```
+claim-agent container  →  Promtail (Docker socket)  →  Loki  →  Grafana (Explore / Logs panel)
+```
+
+Promtail scrapes container logs via the Docker socket, parses JSON log lines produced when
+`CLAIM_AGENT_LOG_FORMAT=json`, and ships them to Loki with labels for `level`, `claim_id`,
+`claim_type`, `correlation_id`, and `logger`.  Human-readable lines are forwarded as raw text.
+
+### Querying logs in Grafana
+
+1. Open Grafana at **http://localhost:3000**.
+2. Go to **Explore** and select the **Loki** datasource.
+3. Use LogQL to filter by claim or severity:
+
+| Query | Description |
+|-------|-------------|
+| `{job="claim-agent"}` | All claim-agent logs |
+| `{job="claim-agent", level="ERROR"}` | Errors only |
+| `{job="claim-agent"} \| json \| claim_id="CLM-12345"` | Single claim trace |
+| `{job="claim-agent"} \| json \| claim_type="fraud"` | All fraud-type claims |
+| `{job="claim-agent"} \|= "escalat"` | Escalation events |
+
+Set `CLAIM_AGENT_LOG_FORMAT=json` (in `.env` or `docker-compose.yml`) to unlock label-based
+filtering in Loki; human-readable format still works but label extraction is skipped.
+
+### Log retention
+
+Retention is controlled by `LOG_RETENTION_DAYS` (default **90 days**).
+
+| Location | Setting |
+|----------|---------|
+| `.env` / environment | `LOG_RETENTION_DAYS=90` |
+| `monitoring/loki-config.yml` → `limits_config.retention_period` | `2160h` (= 90 × 24 h) |
+
+**Keep both values in sync.** To change retention to 30 days:
+
+```bash
+# In .env:
+LOG_RETENTION_DAYS=30
+
+# In monitoring/loki-config.yml, set:
+#   limits_config.retention_period: 720h   # 30 × 24 h
+```
+
+Loki compaction runs every 10 minutes and purges chunks older than the retention period after a
+2-hour deletion delay (see `compactor` block in `monitoring/loki-config.yml`).
+
+### Configuration files
+
+| File | Purpose |
+|------|---------|
+| `monitoring/loki-config.yml` | Loki server, storage, schema, retention, compactor |
+| `monitoring/promtail-config.yml` | Promtail scrape targets, Docker socket, pipeline stages |
+| `monitoring/grafana/provisioning/datasources/loki.yml` | Auto-provisioned Loki datasource in Grafana |
+
+### Production notes
+
+- In production (`docker-compose.prod.yml`), set `LOG_RETENTION_DAYS` to match your compliance
+  requirements (e.g. `LOG_RETENTION_DAYS=365` for one year) and update `loki-config.yml` accordingly.
+- Mount a persistent volume for `/loki` in Loki to survive container restarts (already configured
+  as the `loki-data` named volume in `docker-compose.yml`).
+- For high-availability or cloud deployments, replace the `filesystem` storage backend in
+  `loki-config.yml` with an S3-compatible store (`s3`, `gcs`, or `azure`).
+- Promtail requires read access to the Docker socket (`/var/run/docker.sock`). In environments
+  where this is restricted, switch Promtail to scrape log files from a shared volume instead.
+
 ## Health Endpoint
 
 When running the API server (`claim-agent serve`), production health checks are available at:
@@ -262,6 +339,8 @@ If the observability module is not installed, the agent still runs; LangSmith se
 | Prometheus metrics | `/metrics` – Counters, histograms, gauges for production monitoring |
 | Structured logging | Claim-scoped logs; JSON or human format |
 | ClaimLogger / claim_context | Attach claim_id and context to every log line |
+| Loki log aggregation | Centralized log collection with Promtail → Loki → Grafana (`--profile monitoring`) |
+| Log retention | Configurable via `LOG_RETENTION_DAYS` (default 90 days) |
 | LangSmith | Optional external trace storage and UI |
 | LiteLLM callback | Real token/cost per LLM call, recorded into ClaimMetrics |
 | ClaimMetrics | Per-claim and global cost, latency, token counts |
