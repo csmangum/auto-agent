@@ -15,7 +15,7 @@ from claim_agent.context import ClaimContext
 from claim_agent.db.audit_events import ACTOR_WORKFLOW
 from claim_agent.db.document_repository import build_document_version_groups
 from claim_agent.models.document import DocumentRequestStatus, DocumentType, ReviewStatus
-from claim_agent.storage import get_storage_adapter
+from claim_agent.storage import StorageAdapter, get_storage_adapter
 from claim_agent.storage.local import LocalStorageAdapter
 from claim_agent.storage.s3 import S3StorageAdapter
 from claim_agent.utils import attachment_type_to_document_type, infer_attachment_type
@@ -34,7 +34,7 @@ router = APIRouter(tags=["claims"])
 _RETENTION_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def _document_url_for_adjuster_api(claim_id: str, storage_key: str, storage: Any) -> str:
+def _document_url_for_adjuster_api(claim_id: str, storage_key: str, storage: StorageAdapter) -> str:
     """Build a URL the observability UI can open (see ClaimDetail safeHref rules)."""
     if isinstance(storage, LocalStorageAdapter):
         stored_name = storage_key.split("/")[-1] if "/" in storage_key else storage_key
