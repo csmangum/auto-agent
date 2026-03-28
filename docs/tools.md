@@ -55,23 +55,35 @@ Logic functions access external data (policies, valuations, repair shops, parts,
 |----------|------|-------|
 | Policy | `policy_tools.py` | query_policy_db |
 | Claims | `claims_tools.py` | search_claims_db, compute_similarity |
-| Valuation | `valuation_tools.py` | fetch_vehicle_value, evaluate_damage, calculate_payout |
+| Valuation | `valuation_tools.py` | fetch_vehicle_value, calculate_diminished_value, evaluate_damage, calculate_payout |
 | Document | `document_tools.py` | generate_report, generate_claim_id |
 | Escalation | `escalation_tools.py` | evaluate_escalation, escalate_claim, detect_fraud_indicators, generate_escalation_report |
 | Fraud | `fraud_tools.py` | analyze_claim_patterns, cross_reference_fraud_indicators, perform_fraud_assessment, generate_fraud_report |
 | Partial Loss | `partial_loss_tools.py` | get_available_repair_shops, assign_repair_shop, get_parts_catalog, create_parts_order, calculate_repair_estimate, generate_repair_authorization |
 | Rental | `rental_tools.py` | check_rental_coverage, get_rental_limits, process_rental_reimbursement |
-| Salvage | `salvage_tools.py` | get_salvage_value, initiate_title_transfer, record_salvage_disposition |
+| Salvage | `salvage_tools.py` | get_salvage_value, initiate_title_transfer, record_dmv_salvage_report, record_salvage_disposition, submit_nmvtis_report |
 | Supplemental | `supplemental_tools.py` | get_original_repair_estimate, calculate_supplemental_estimate, update_repair_authorization |
-| Compliance | `compliance_tools.py` | search_state_compliance, search_california_compliance |
+| Compliance | `compliance_tools.py` | search_state_compliance, search_california_compliance, get_state_compliance_summary, get_fraud_report_template_tool, get_comparative_fault_rules_tool, get_compliance_due_date_tool |
 | RAG | `rag_tools.py` | search_policy_compliance, get_compliance_deadlines, get_required_disclosures, get_coverage_exclusions, get_total_loss_requirements, get_fraud_detection_guidance, get_repair_standards |
 | Review | `review_tools.py` | get_claim_process_context |
+| Bodily injury | `bodily_injury_tools.py` | query_medical_records, assess_injury_severity, calculate_bi_settlement, check_pip_medpay_exhaustion, check_cms_reporting_required, check_minor_settlement_approval, get_structured_settlement_option, calculate_loss_of_earnings, audit_medical_bills, build_treatment_timeline |
+| Denial/coverage | `denial_coverage_tools.py` | generate_denial_letter, route_to_appeal |
+| Dispute | `dispute_tools.py` | lookup_original_claim, classify_dispute, generate_dispute_report |
+| Follow-up | `follow_up_tools.py` | send_user_message, record_user_response, check_pending_responses |
+| Handback | `handback_tools.py` | get_escalation_context, apply_reviewer_decision, parse_reviewer_decision |
+| Party intake | `party_intake_tools.py` | record_witness_party, update_witness_party, record_witness_statement, record_attorney_representation |
+| Payment | `payment_tools.py` | record_claim_payment |
+| Status | `status_tools.py` | close_claim |
+| Subrogation | `subrogation_tools.py` | assess_liability, build_subrogation_case, send_demand_letter, record_arbitration_filing, record_recovery |
+| Task | `task_tools.py` | create_claim_task, update_claim_task, get_claim_tasks, create_document_request, get_document_requests |
+| Claim notes | `claim_notes_tools.py` | add_claim_note, add_after_action_note, get_claim_notes |
+| Vision | `vision_tools.py` | analyze_damage_photo |
 
 ---
 
 ## RAG Tools
 
-RAG tools provide semantic search over policy language and compliance regulations. All accept a state (California, Texas, Florida, or New York) and return formatted excerpts with source information. See [RAG](rag.md) for data sources, indexing, and integration.
+RAG tools provide semantic search over policy language and compliance regulations. All accept a state (any of the eight `SUPPORTED_STATES`: California, Texas, Florida, New York, Georgia, New Jersey, Pennsylvania, Illinois) and return formatted excerpts with source information. See [RAG](rag.md) for data sources, indexing, and integration.
 
 | Tool | Purpose |
 |------|--------|
@@ -97,6 +109,7 @@ Query the policy database to validate policy and retrieve coverage details.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `policy_number` | string | The insurance policy number to look up |
+| `damage_description` | string (optional) | Describe the damage or loss (e.g. front bumper collision); used when validating coverage for the loss |
 
 **Returns:** JSON string
 ```json
@@ -158,7 +171,7 @@ Compare two incident descriptions and return a similarity score.
 }
 ```
 
-**Threshold:** Score > 80% indicates likely duplicate. The Similarity Analyst agent uses this tool and provides brief reasoning in its task output (score 0–100, is_duplicate, reasoning).
+**Threshold:** Score strictly > 80 indicates likely duplicate (a score of exactly 80 is not flagged). The Similarity Analyst agent uses this tool and provides brief reasoning in its task output (score 0–100, is_duplicate, reasoning).
 
 **Used by:** [Duplicate Crew](crews.md#duplicate-crew) — Similarity Analyst (Step 2: Similarity Analysis)
 
@@ -224,15 +237,45 @@ Evaluate damage description and optional repair cost to assess severity.
 
 ---
 
+### calculate_diminished_value
+
+Calculate diminished value when the loss state requires it (e.g. Georgia 17c-style). Returns zero when the state does not require diminished value.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `vehicle_value` | float | ACV / pre-loss fair market value of the vehicle |
+| `loss_state` | string (optional) | State/jurisdiction (Georgia uses 17c multipliers; most states do not require DV) |
+| `mileage` | integer (optional) | Odometer for mileage bracket (Georgia 17c) |
+| `vehicle_year` | integer (optional) | Model year (echoed in output) |
+| `repair_cost` | float (optional) | Actual or estimated repair cost (for damage multiplier from repair/FMV ratio) |
+| `damage_severity_tier` | string (optional) | When `repair_cost` is unknown: cosmetic, light, moderate, major, structural, or severe |
+
+**Returns:** JSON string with diminished value, multipliers, message, and formula details when applicable.
+
+**Usage by Agents:**
+- Workflows that need state-specific diminished value (e.g. Georgia)
+
+---
+
 ### calculate_payout
 
-Calculate total loss payout by subtracting policy deductible from vehicle value.
+Calculate total loss payout by subtracting policy deductible from vehicle value (and applying tax/title/fees, salvage retention, gap coordination, etc., when provided).
 
 **Parameters:**
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `vehicle_value` | float | Current market value of the vehicle |
 | `policy_number` | string | Policy number to look up deductible |
+| `damage_description` | string (optional) | Damage description to infer collision vs comprehensive |
+| `coverage_type` | string (optional) | Explicit coverage: `collision` or `comprehensive` |
+| `loss_state` | string (optional) | State/jurisdiction for tax/title/fees estimation |
+| `tax_title_fees` | float (optional) | Override estimated sales tax plus DMV/registration fees |
+| `owner_retain_salvage` | boolean (optional) | Whether the policyholder retains the salvage vehicle |
+| `salvage_value` | float (optional) | Salvage value to deduct when `owner_retain_salvage` is true |
+| `loan_balance` | float (optional) | Loan balance; when payout is below balance and the policy has gap insurance, coordinates with the gap adapter |
+| `claim_id` | string (optional) | Claim ID passed to the gap carrier when submitting shortfall |
+| `vin` | string (optional) | VIN forwarded to the gap carrier |
 
 **Returns:** JSON string
 ```json
@@ -264,7 +307,7 @@ Generate a claim report/summary document.
 | `summary` | string | Summary of actions taken |
 | `payout_amount` | float (optional) | Settlement amount if applicable |
 
-**Returns:** Formatted report string
+**Returns:** JSON string with `report_id`, `claim_id`, `claim_type`, `status`, `summary`, `payout_amount`
 
 **Usage by Agents:**
 - Claim Assignment Specialist (New Claim Crew)
@@ -337,9 +380,9 @@ Evaluate whether a claim needs human review (pre-workflow).
 
 **Escalation Triggers:**
 - Fraud indicators detected
-- Payout amount > $25,000
+- Payout amount > $10,000 (configurable via `ESCALATION_HIGH_VALUE_THRESHOLD`)
 - Low router confidence
-- Ambiguous similarity (60-80%)
+- Ambiguous similarity (50–80%, configurable via `ESCALATION_SIMILARITY_AMBIGUOUS_RANGE`)
 
 ---
 
@@ -881,6 +924,31 @@ Record salvage disposition outcome and auction/recovery status.
 
 **Returns:** JSON with recorded disposition details.
 
+### record_dmv_salvage_report
+
+Record that salvage title was reported to the state DMV. Call after `initiate_title_transfer` to persist `dmv_reference` and status on the claim.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `claim_id` | string | The claim ID |
+| `dmv_reference` | string | DMV reference number from title transfer |
+| `salvage_title_status` | string (default: dmv_reported) | pending, dmv_reported, or certificate_issued |
+
+**Returns:** JSON with recorded DMV report details (including NMVTIS-related keys when submission runs), or JSON with `error` and `claim_id` on failure.
+
+### submit_nmvtis_report
+
+Manually trigger or retry federal NMVTIS total-loss / salvage reporting. Normally runs automatically after DMV salvage reporting or final salvage disposition.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `claim_id` | string | Claim identifier |
+| `force_resubmit` | boolean (optional) | If true, submit again even when a prior submission was accepted |
+
+**Returns:** JSON with `nmvtis_reference` / `nmvtis_status` or error details.
+
 ---
 
 ## Supplemental Tools
@@ -950,7 +1018,7 @@ Search state auto insurance compliance/regulatory reference data. Use for multi-
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `query` | string (optional) | Keyword to search for |
-| `state` | string (default: California) | State jurisdiction — California, Texas, Florida, or New York |
+| `state` | string (default: California) | State jurisdiction — any of the eight `SUPPORTED_STATES` (California, Texas, Florida, New York, Georgia, New Jersey, Pennsylvania, Illinois) |
 
 **Returns:** JSON string with matching compliance entries
 
@@ -968,6 +1036,52 @@ Search California auto insurance compliance/regulatory reference data. Convenien
 **Returns:** JSON string with matching compliance entries
 
 **Data Source:** Uses the same configured California compliance source as `search_state_compliance` (respects `CA_COMPLIANCE_PATH` setting). Both tools read from the same data; they are interchangeable for California queries.
+
+### get_state_compliance_summary
+
+Return state-specific compliance rules and deadlines (acknowledgment, investigation, prompt payment, total loss threshold, SIU referral threshold, diminished value rules, appraisal rights).
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `state` | string | State jurisdiction (must be a supported state) |
+
+**Returns:** JSON string with rule fields for the state, or an error object if the state is invalid or has no rules.
+
+### get_fraud_report_template_tool
+
+Return the state-specific fraud report form template (required fields, filing deadline, bureau contact) for Department of Insurance filing.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `state` | string (optional, default: California) | State jurisdiction |
+
+**Returns:** JSON string with a `template` object or an error if the state is unsupported.
+
+### get_comparative_fault_rules_tool
+
+Return comparative fault rules for liability and subrogation (e.g. pure comparative, modified 51% bar, contributory).
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `state` | string (optional, default: California) | State jurisdiction |
+
+**Returns:** JSON string with `comparative_fault_type`, `comparative_fault_bar`, and `state`.
+
+### get_compliance_due_date_tool
+
+Compute the calendar due date for a compliance obligation from a base date.
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `base_date` | string | Reference date in YYYY-MM-DD |
+| `deadline_type` | string | acknowledgment, investigation, or prompt_payment |
+| `state` | string | State jurisdiction |
+
+**Returns:** JSON string with `due_date` (YYYY-MM-DD) and `days`, or an error object.
 
 ---
 
