@@ -34,10 +34,11 @@ Unit tests use a venv; no API key needed for unit/integration/E2E tests (LLM is 
 ```
 src/claim_agent/
 ├── main.py           # CLI entry point (claim-agent)
-├── context.py        # ClaimContext for CLI/API
+├── context.py        # ClaimContext / dependency injection for CLI, API, and workflow
 ├── events.py         # Event handling
 ├── exceptions.py     # ClaimAgentError and domain exceptions
 ├── rbac_roles.py     # RBAC role name constants
+├── scheduler.py      # APScheduler integration (used by run-scheduler)
 ├── api/              # FastAPI routes, auth, deps
 ├── config/           # LLM (llm.py), protocol (llm_protocol.py), settings (settings.py, settings_model.py)
 ├── agents/           # Agent definitions
@@ -96,7 +97,7 @@ Use `.venv` for running tests. `pyproject.toml` sets default pytest `addopts` to
 | Task | Command / Location |
 |------|--------------------|
 | Process a claim | `claim-agent process tests/sample_claims/partial_loss_parking.json` |
-| Start API server | `claim-agent serve [--reload]` |
+| Start API server | `claim-agent serve [--reload] [--workers N]` |
 | Start dashboard | `claim-agent serve` + `cd frontend && npm run dev` |
 | Run migrations | `alembic upgrade head` |
 | Create migration | `alembic revision -m "description"` |
@@ -108,7 +109,7 @@ Use `.venv` for running tests. `pyproject.toml` sets default pytest `addopts` to
 ## Key Patterns
 
 - **Router–Delegator**: Router classifies claims; workflow crews handle each type.
-- **Escalation**: Fraud indicators, high value, or low confidence → `needs_review`.
+- **Escalation**: Fraud indicators, high value, low confidence, or ambiguous duplicate similarity → `needs_review`.
 - **Adapters**: Pluggable backends (policy, valuation, repair, SIU) via registry.
 - **Mock Crew**: `MOCK_CREW_ENABLED=true`, `VISION_ADAPTER=mock` for testing without external APIs.
 
@@ -143,7 +144,7 @@ See `README.md` for a shorter curated table.
 | Service | How to start | Port |
 |---------|-------------|------|
 | FastAPI backend | `MOCK_DB_PATH=data/mock_db.json MOCK_CREW_ENABLED=true .venv/bin/claim-agent serve --reload` | 8000 |
-| React dashboard | `cd frontend && npm run dev` | 5173 (proxies `/api` to backend) |
+| React dashboard | `cd frontend && npm run dev` | 5173 (proxies `/api` → `/api/v1` on backend) |
 | Claimant portal (self-service) | Same Vite dev server; open `http://localhost:5173/portal/login` (`CLAIMANT_PORTAL_ENABLED=true` on backend) | 5173 |
 
 The backend uses SQLite by default (`data/claims.db`, auto-created). No external databases required for dev/test.

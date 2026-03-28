@@ -77,7 +77,7 @@ Optional list of attachments (photos, PDFs, estimates). Default empty array.
 
 Optional list of claim parties. Each party has: `party_type` (claimant, policyholder, witness, attorney, provider, lienholder), `name`, `email`, `phone`, `role`, `consent_status`, `authorization_status`. Used for communication routing (e.g., if claimant has attorney, contact attorney) and payment disbursement. See [Database](database.md#claim_parties).
 
-Party-to-party links (e.g., claimant represented by attorney) are stored in **`claim_party_relationships`** after both parties exist. Use `POST /api/claims/{claim_id}/party-relationships` and `DELETE /api/claims/{claim_id}/party-relationships/{id}` (adjuster roles), or `ClaimRepository.add_claim_party_relationship` / `delete_claim_party_relationship`. They are not set on the FNOL payload; create parties first, then add edges by party id.
+Party-to-party links (e.g., claimant represented by attorney) are stored in **`claim_party_relationships`** after both parties exist. Use `POST /api/v1/claims/{claim_id}/party-relationships` and `DELETE /api/v1/claims/{claim_id}/party-relationships/{id}` (adjuster roles), or `ClaimRepository.add_claim_party_relationship` / `delete_claim_party_relationship`. They are not set on the FNOL payload; create parties first, then add edges by party id.
 
 ### claim_type
 
@@ -109,7 +109,7 @@ flowchart TD
     B -->|Yes| C[DUPLICATE]
     B -->|No| D{prior_claim_id / reopening_reason / is_reopened?}
     D -->|Yes| E[REOPENED]
-    D -->|No| H{Same VIN/date exists?}
+    D -->|No| H{Duplicate signals: similarity ≥ threshold & within days window?}
     H -->|Yes| C
     H -->|No| I{Total loss keywords?}
     I -->|Yes| J[TOTAL_LOSS]
@@ -175,9 +175,7 @@ Claims matching existing claims in the system. For the formal workflow specifica
 
 ### Classification Criteria
 
-- Same VIN as an existing claim
-- Same or similar incident date
-- Similar incident description
+- Router duplicate classification uses **similarity scoring and a configurable days window**, not a naive “same VIN and same date” match. Pre-routing populates `existing_claims_for_vin` when **description similarity** meets a threshold **and** **incident dates** are within the configured window (stricter threshold for high-value claims); same VIN with different damage types is excluded. Thresholds and window come from routing / duplicate-detection settings (see `workflow/routing.py`).
 
 ### Similarity Thresholds
 
@@ -321,7 +319,7 @@ Insurance Pays = Total - Customer Pays
 
 ### Supplemental (Sub-Workflow)
 
-When additional damage is discovered during repair, the [Supplemental Crew](crews.md#supplemental-crew) handles it as a sub-workflow. Invoke via `POST /claims/{claim_id}/supplemental` with:
+When additional damage is discovered during repair, the [Supplemental Crew](crews.md#supplemental-crew) handles it as a sub-workflow. Invoke via `POST /api/v1/claims/{claim_id}/supplemental` with:
 
 ```json
 {
@@ -384,9 +382,7 @@ Settled claims being reopened for new damage, policyholder appeal, or similar. T
 
 ### Classification Criteria
 
-- `prior_claim_id` is present and references a prior settled claim
-- `reopening_reason` is present (e.g., new_damage, policyholder_appeal, additional_covered_damage)
-- `is_reopened` is true
+- **OR logic (any one is enough):** If `definitive_duplicate` is not true, the router classifies as `reopened` when **any** of the following appear in claim data: `prior_claim_id`, `reopening_reason`, or `is_reopened` true—matching `workflow/routing.py` (not all three required).
 
 ### Example
 
@@ -420,5 +416,8 @@ The project includes sample claims for testing in `tests/sample_claims/`:
 | `partial_loss_front_collision.json` | partial_loss |
 | `bodily_injury_claim.json` | bodily_injury |
 | `reopened_claim.json` | reopened |
+| `multi_vehicle_incident.json` | (multi-vehicle / incident grouping) |
+| `coverage_denied_theft.json` | coverage denied (theft) |
+| `territory_denied_mexico.json` | territory / jurisdiction |
 
 See [Getting Started](getting-started.md#sample-claims) for usage.

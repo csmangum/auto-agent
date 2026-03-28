@@ -93,7 +93,7 @@ Optional `purge_after_archive_by_state` sets how many **calendar years** after `
 
 Claims with `litigation_hold=1` are excluded from retention enforcement by default (retention suspended for claims in litigation). They are also skipped during DSAR deletion when `LITIGATION_HOLD_BLOCKS_DELETION=true`.
 
-- **Set/clear hold**: `PATCH /api/claims/{claim_id}/litigation-hold` with `{"litigation_hold": true|false}`
+- **Set/clear hold**: `PATCH /api/v1/claims/{claim_id}/litigation-hold` with `{"litigation_hold": true|false}`
 - **CLI**: `claim-agent litigation-hold --claim-id X --on` or `--off`
 - **Override**: `claim-agent retention-enforce --include-litigation-hold` archives claims with hold (use with caution)
 
@@ -307,16 +307,16 @@ Set `LLM_DATA_MINIMIZATION=false` for debugging.
 
 ### Access Requests (Right-to-Know)
 
-- **Submit**: `POST /api/dsar/access` with claimant_identifier and verification (claim_id or policy_number+vin)
-- **Status**: `GET /api/dsar/requests/{request_id}`
-- **List**: `GET /api/dsar/requests` – paginated (limit, offset); returns `requests`, `total`, `limit`, `offset`
-- **Fulfill**: `POST /api/dsar/requests/{request_id}/fulfill` – returns export with claims, parties, audit entries, notes
+- **Submit**: `POST /api/v1/dsar/access` with claimant_identifier and verification (claim_id or policy_number+vin)
+- **Status**: `GET /api/v1/dsar/requests/{request_id}`
+- **List**: `GET /api/v1/dsar/requests` – paginated (limit, offset); returns `requests`, `total`, `limit`, `offset`
+- **Fulfill**: `POST /api/v1/dsar/requests/{request_id}/fulfill` – returns export with claims, parties, audit entries, notes
 - **CLI**: `claim-agent dsar-access --claimant-email X --claim-id Y [--fulfill]`
 
 ### Deletion Requests (Right-to-Delete)
 
-- **Submit**: `POST /api/dsar/deletion` with claimant_identifier and verification (claim_id or policy_number+vin)
-- **Fulfill**: `POST /api/dsar/deletion/fulfill/{request_id}` – anonymizes claims (`policy_number`, `vin`, `incident_description`, `damage_description`, `attachments`), parties, and claim_notes (PII placeholders); claim_audit_log behavior is controlled by `DSAR_AUDIT_LOG_POLICY` (see below)
+- **Submit**: `POST /api/v1/dsar/deletion` with claimant_identifier and verification (claim_id or policy_number+vin)
+- **Fulfill**: `POST /api/v1/dsar/deletion/fulfill/{request_id}` – anonymizes claims (`policy_number`, `vin`, `incident_description`, `damage_description`, `attachments`), parties, and claim_notes (PII placeholders); claim_audit_log behavior is controlled by `DSAR_AUDIT_LOG_POLICY` (see below)
 - **CLI**: `claim-agent dsar-deletion --claimant-email X --claim-id Y [--fulfill]`
 - **Litigation hold**: When `LITIGATION_HOLD_BLOCKS_DELETION=true` (default), claims with `litigation_hold=1` are skipped. Set to `false` to anonymize regardless.
 
@@ -336,8 +336,8 @@ The `audit_log_policy` and `audit_rows_affected` fields are included in the dele
 
 ### Consent Tracking
 
-- **Update consent**: `PATCH /api/claims/{claim_id}/parties/{party_id}/consent` with `{"consent_status": "granted"|"revoked"|"pending"}`
-- **Revoke by email**: `POST /api/dsar/consent-revoke` with `{"email": "..."}` – revokes consent for all parties with that email
+- **Update consent**: `PATCH /api/v1/claims/{claim_id}/parties/{party_id}/consent` with `{"consent_status": "granted"|"revoked"|"pending"}`
+- **Revoke by email**: `POST /api/v1/dsar/consent-revoke` with `{"email": "..."}` – revokes consent for all parties with that email
 - When `consent_status=revoked`, party PII is excluded from LLM prompts (e.g. bodily_injury crew)
 
 ### DSAR Configuration

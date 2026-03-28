@@ -2,16 +2,16 @@
 
 Supervisor, admin, and executive API roles can call aggregate endpoints over `reserve_history` and `claims` for regulatory, reinsurance, and internal loss-reserve analysis.
 
-**Authentication:** same as other `/api/*` routes (`X-API-Key` or `Authorization: Bearer`). See [Configuration](configuration.md#authentication-and-rbac).
+**Authentication:** same as other `/api/v1/*` routes (`X-API-Key` or `Authorization: Bearer`). See [Configuration](configuration.md#authentication-and-rbac).
 
 ## Endpoints
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/reports/reserves/by-period` | Net reserve **movements** by calendar month or quarter (`reserve_history.created_at`), optional `claim_type` and comma-separated `status`. |
-| GET | `/api/reports/reserves/development` | **Paginated** join of each history row to claim dimensions, including `accident_year`, `development_month` (months after incident month), and `net_movement`. |
-| GET | `/api/reports/reserves/triangle` | **Aggregated** `accident_year` × `development_month` cells (`sum_net_movement`, `entry_count`). |
-| GET | `/api/reports/reserves/adequacy-summary` | Portfolio **adequate vs inadequate** counts using the same benchmark as `GET /api/claims/{claim_id}/reserve/adequacy` (max of positive `estimated_damage` and positive `payout_amount`). |
+| GET | `/api/v1/reports/reserves/by-period` | Net reserve **movements** by calendar month or quarter (`reserve_history.created_at`), optional `claim_type` and comma-separated `status`. |
+| GET | `/api/v1/reports/reserves/development` | **Paginated** join of each history row to claim dimensions, including `accident_year`, `development_month` (months after incident month), and `net_movement`. |
+| GET | `/api/v1/reports/reserves/triangle` | **Aggregated** `accident_year` × `development_month` cells (`sum_net_movement`, `entry_count`). |
+| GET | `/api/v1/reports/reserves/adequacy-summary` | Portfolio **adequate vs inadequate** counts using the same benchmark as `GET /api/v1/claims/{claim_id}/reserve/adequacy` (max of positive `estimated_damage` and positive `payout_amount`). |
 
 ### Query parameters (common)
 

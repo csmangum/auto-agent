@@ -324,7 +324,7 @@ When running the API server (`claim-agent serve`), production health checks are 
 
 | Path | Description |
 |------|-------------|
-| `GET /api/health` | Primary health check |
+| `GET /api/v1/health` | Primary health check |
 | `GET /health` | Alias for k8s/load balancers |
 | `GET /healthz` | Alias for k8s/load balancers |
 
@@ -432,7 +432,7 @@ When the provider does not return cost, the metrics module estimates it using a 
 - **`get_metrics().get_global_stats()`** – Dict of global aggregates.
 - **`track_llm_call(claim_id, model, input_tokens, output_tokens, ...)`** – Convenience wrapper that records on the global metrics instance.
 
-Metrics are in-memory only (per process). They are cleared when the process exits; tests use **`reset_metrics()`** to clear the singleton between tests. `GET /api/metrics/cost` and `get_cost_breakdown()` therefore reflect spend for the current process unless you export/aggregate metrics in an external system (for example Prometheus, LangSmith, or your own telemetry backend).
+Metrics are in-memory only (per process). They are cleared when the process exits; tests use **`reset_metrics()`** to clear the singleton between tests. `GET /api/v1/metrics/cost` and `get_cost_breakdown()` therefore reflect spend for the current process unless you export/aggregate metrics in an external system (for example Prometheus, LangSmith, or your own telemetry backend).
 
 ### LLM cost threshold alert (optional)
 
@@ -528,7 +528,7 @@ If the observability module is not installed, the agent still runs; LangSmith se
 
 | Feature | Purpose |
 |--------|---------|
-| Health endpoint | `/api/health`, `/health`, `/healthz` – DB (and optional LLM) checks |
+| Health endpoint | `/api/v1/health`, `/health`, `/healthz` – DB (and optional LLM) checks |
 | Prometheus metrics | `/metrics` – Counters, histograms, gauges for production monitoring |
 | Structured logging | Claim-scoped logs; JSON or human format |
 | ClaimLogger / claim_context | Attach claim_id and context to every log line |

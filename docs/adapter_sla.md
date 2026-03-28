@@ -69,7 +69,7 @@ This document defines Service Level Agreement (SLA) expectations for real adapte
 All real adapters should:
 
 1. **Use `AdapterHttpClient`** (or equivalent) for auth, retry, and circuit breaker
-2. **Implement `health_check() -> tuple[bool, str]`** for `/api/health` inclusion
+2. **Implement `health_check() -> tuple[bool, str]`** for `/api/v1/health` inclusion
 3. **Return `None` or empty** on circuit open rather than raising (where semantically valid)
 4. **Log failures** at WARNING level for circuit open, ERROR for unexpected errors
 
@@ -86,7 +86,10 @@ All real adapters should:
 
 ## Health Endpoint
 
-`GET /api/health` includes adapter checks when `*_ADAPTER=rest`:
+`GET /api/v1/health` runs adapter probes when the backend supports them:
+
+- For **most adapters**, a probe runs when `*_ADAPTER=rest` (and the adapter is REST-capable).
+- For **valuation**, a probe also runs when `VALUATION_ADAPTER` is one of the provider backends: `ccc`, `mitchell`, or `audatex` (in addition to `rest` when supported).
 
 ```json
 {
@@ -102,5 +105,5 @@ All real adapters should:
 
 - `ok`: Adapter health probe succeeded
 - `degraded:msg`: Probe failed (e.g. timeout, 5xx)
-- `skipped`: Adapter is mock/stub, no health check
+- `skipped`: Adapter uses a backend that does not run a probe (e.g. `mock`), or valuation is not `rest` / `ccc` / `mitchell` / `audatex`
 - `error:msg`: Exception during check

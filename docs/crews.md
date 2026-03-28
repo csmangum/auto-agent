@@ -496,12 +496,12 @@ The Fraud crew is invoked **after**:
 
 **Location**: `src/claim_agent/crews/siu_crew.py`
 
-Investigates claims under Special Investigations Unit review. Performs document verification, records investigation, and case management including state fraud bureau filing. Sub-workflow invoked via `POST /claims/{claim_id}/siu-investigate`.
+Investigates claims under Special Investigations Unit review. Performs document verification, records investigation, and case management including state fraud bureau filing. Sub-workflow invoked via `POST /api/v1/claims/{claim_id}/siu-investigate`.
 
 ### Entry Conditions
 
 - **Claim status:** `under_investigation` or `fraud_suspected`
-- **Trigger:** On-demand via `POST /api/claims/{claim_id}/siu-investigate`
+- **Trigger:** On-demand via `POST /api/v1/claims/{claim_id}/siu-investigate`
 - **SIU case:** Creates case via adapter if not already present (e.g., manual escalation)
 
 ### Agents
@@ -562,7 +562,7 @@ flowchart TB
 
 ### Integration
 
-- **API:** `POST /claims/{claim_id}/siu-investigate` (RequireAdjuster)
+- **API:** `POST /api/v1/claims/{claim_id}/siu-investigate` (RequireAdjuster)
 - **Eligible statuses:** `under_investigation`, `fraud_suspected`
 - **SIU case:** Created automatically if missing (manual escalation)
 
@@ -878,6 +878,8 @@ The Rental crew runs **after** Partial Loss crew and **before** Settlement crew 
 
 Runs as a shared post-workflow settlement phase for payout-ready Total Loss and Partial Loss claims. It standardizes settlement documentation, payment distribution, and closure.
 
+**Liability determination (orchestrator stage):** For `total_loss`, `partial_loss`, and `bodily_injury`, the main workflow runs **liability determination** after the primary workflow crew (and rental, when applicable for partial loss) and **before** settlement. That stage uses `create_liability_determination_crew` in the orchestrator pipeline (`_stage_liability_determination` in `workflow/stages.py`) so liability inputs are available to settlement and downstream stages.
+
 ### Flow Sequence
 
 ```mermaid
@@ -909,12 +911,12 @@ flowchart TB
 
 **Location**: `src/claim_agent/crews/subrogation_crew.py`
 
-Post-settlement recovery from at-fault parties. Runs for total_loss and partial_loss after Settlement. Flow: assess liability → build case → send demand → track recovery.
+Post-settlement recovery from at-fault parties. Runs after Settlement for claim types that use the shared settlement path (`total_loss`, `partial_loss`, `bodily_injury`). Flow: assess liability → build case → send demand → track recovery.
 
 ### Entry Conditions
 
-- **Claim type:** `total_loss` or `partial_loss` (runs after Settlement)
-- **Trigger:** Automatic when `_requires_settlement(claim_type)` is True
+- **Claim type:** `total_loss`, `partial_loss`, or `bodily_injury` (runs after Settlement)
+- **Trigger:** The same claim types that require settlement (`_requires_settlement(claim_type)` in `workflow/helpers.py`: `total_loss`, `partial_loss`, `bodily_injury`) are eligible for subrogation. The orchestrator runs subrogation **only after** the settlement stage completes for those types—`_requires_settlement` selects who enters the settlement/subrogation sequence, not a separate “immediate” trigger before settlement.
 
 ### Agents
 
@@ -975,7 +977,7 @@ Handles denials and coverage disputes. Flow: review denial reason → verify cov
 ### Entry Conditions
 
 - **Claim status:** `denied` (STATUS_DENIED)
-- **Trigger:** `POST /claims/{claim_id}/denial-coverage` with `{ "denial_reason": "...", "policyholder_evidence": "..." }`
+- **Trigger:** `POST /api/v1/claims/{claim_id}/denial-coverage` with `{ "denial_reason": "...", "policyholder_evidence": "..." }`
 
 ### Agents
 
@@ -1006,7 +1008,7 @@ flowchart TB
 
 **Location**: `src/claim_agent/crews/supplemental_crew.py`
 
-Sub-workflow for additional damage discovered during repair on existing partial loss claims. Invoked via `POST /claims/{claim_id}/supplemental` when a shop or adjuster reports supplemental damage. California CCR 2695.8 requires prompt inspection and authorization of supplemental payment.
+Sub-workflow for additional damage discovered during repair on existing partial loss claims. Invoked via `POST /api/v1/claims/{claim_id}/supplemental` when a shop or adjuster reports supplemental damage. California CCR 2695.8 requires prompt inspection and authorization of supplemental payment.
 
 ### Entry Conditions
 
@@ -1038,7 +1040,7 @@ flowchart TB
 
 ### Integration
 
-Supplemental is a **sub-workflow** (like Dispute), not a router-classified claim type. Entry point: `POST /claims/{claim_id}/supplemental` with body `{ "supplemental_damage_description": "...", "reported_by": "shop" }`.
+Supplemental is a **sub-workflow** (like Dispute), not a router-classified claim type. Entry point: `POST /api/v1/claims/{claim_id}/supplemental` with body `{ "supplemental_damage_description": "...", "reported_by": "shop" }`.
 
 ---
 
@@ -1060,7 +1062,7 @@ flowchart LR
 
 ### Integration
 
-- **Post-escalation**: Runs when a supervisor approves a claim via `POST /claims/{claim_id}/review/approve` or `claim-agent approve`
+- **Post-escalation**: Runs when a supervisor approves a claim via `POST /api/v1/claims/{claim_id}/review/approve` or `claim-agent approve`
 - **Optional reviewer decision**: Pass `reviewer_decision` with `confirmed_claim_type` and/or `confirmed_payout` to apply overrides
 - **Tools**: `get_escalation_context`, `parse_reviewer_decision`, `apply_reviewer_decision`
 
@@ -1080,7 +1082,7 @@ Performs a supervisor/compliance audit of the claim process. Reviews how the cla
 
 ### Entry Conditions
 
-- **Trigger**: On-demand via `POST /api/claims/{claim_id}/review` (supervisor role)
+- **Trigger**: On-demand via `POST /api/v1/claims/{claim_id}/review` (supervisor role)
 - **Input**: claim_id, claim_data, workflow_output from the latest run
 
 ### Agents
@@ -1119,7 +1121,7 @@ flowchart TB
 
 ### Integration
 
-- **API**: `POST /claims/{claim_id}/review` (RequireSupervisor)
+- **API**: `POST /api/v1/claims/{claim_id}/review` (RequireSupervisor)
 - **Persistence**: Report is recorded in `claim_audit_log` with `action="claim_review"`
 - **Tools**: `get_claim_process_context` aggregates claim record, audit log, workflow runs, task checkpoints, and notes
 
