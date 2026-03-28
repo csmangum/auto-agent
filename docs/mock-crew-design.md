@@ -69,7 +69,7 @@ Based on codebase analysis, the following external interactions must be mocked:
 - `MOCK_CLAIMANT_ENABLED`: bool
 - `MOCK_CLAIMANT_RESPONSE_STRATEGY`: `immediate` | `delayed` | `refuse` | `partial`
 
-*(Planned / not yet implemented: configurable response delay via env — no `MOCK_CLAIMANT_RESPONSE_DELAY_MS` in `.env.example` today.)*
+*(Planned / not yet implemented: configurable response delay via environment — not exposed in `.env.example` today.)*
 
 ---
 
@@ -96,7 +96,7 @@ Based on codebase analysis, the following external interactions must be mocked:
 - `MOCK_IMAGE_MODEL`: image-generation model id (when model-based generation is used)
 - `MOCK_IMAGE_VISION_ANALYSIS_SOURCE`: `claim_context` | `deterministic` | `passthrough` (passthrough = real API, for comparison)
 
-*(Planned / not yet implemented: `MOCK_IMAGE_MODE` — placeholder vs generated — is not in `.env.example`.)*
+*(Planned / not yet implemented: choosing placeholder vs model-generated images via configuration — not in `.env.example` today.)*
 
 ---
 
@@ -120,7 +120,7 @@ Based on codebase analysis, the following external interactions must be mocked:
 **Configuration**:
 - `MOCK_DOCUMENT_GENERATOR_ENABLED`: bool
 
-*(Planned / not yet implemented: `MOCK_DOCUMENT_OUTPUT_FORMAT` — not in `.env.example`.)*
+*(Planned / not yet implemented: JSON vs PDF output toggle for mock documents — not in `.env.example` today.)*
 
 ---
 
@@ -145,7 +145,7 @@ Based on codebase analysis, the following external interactions must be mocked:
 - `MOCK_REPAIR_SHOP_ENABLED`: bool
 - `MOCK_REPAIR_SHOP_RESPONSE_TEMPLATE`: default acknowledgment text for mock shop replies
 
-*(Planned / not yet implemented: `MOCK_REPAIR_SHOP_BEHAVIOR` — not in `.env.example`.)*
+*(Planned / not yet implemented: cooperative / delayed / supplement / refuse shop personas — not in `.env.example` today.)*
 
 ---
 
@@ -170,7 +170,7 @@ Based on codebase analysis, the following external interactions must be mocked:
 - `MOCK_THIRD_PARTY_ENABLED`: bool
 - `MOCK_THIRD_PARTY_OUTCOME`: `accept` | `reject` | `negotiate` | `no_response`
 
-*(Planned / not yet implemented: `MOCK_THIRD_PARTY_SETTLEMENT_RATIO` — not in `.env.example`.)*
+*(Planned / not yet implemented: settlement amount as a ratio of demand — not in `.env.example` today.)*
 
 ---
 
@@ -212,7 +212,7 @@ Based on codebase analysis, the following external interactions must be mocked:
 **Configuration**:
 - `MOCK_WEBHOOK_CAPTURE_ENABLED`: bool (capture outbound webhook payloads in-memory for tests)
 
-*(Planned / not yet implemented: file payload dump path and simulated HTTP status — no `MOCK_WEBHOOK_CAPTURE_PATH` or `MOCK_WEBHOOK_RESPONSE_STATUS` in `.env.example`.)*
+*(Planned / not yet implemented: file payload dump path and simulated HTTP status for webhook tests — not in `.env.example` today.)*
 
 ---
 
