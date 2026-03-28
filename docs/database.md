@@ -533,7 +533,7 @@ CREATE INDEX IF NOT EXISTS idx_claim_audit_log_claim_id_action ON claim_audit_lo
 | `payout_set` | Payout amount set |
 | `attachments_updated` | Attachments modified |
 | `document_viewed` | Reserved for future document metadata views (chain of custody) |
-| `document_downloaded` | Attachment file served via `GET /api/claims/.../attachments/{key}` or portal equivalent; `after_state` JSON: `storage_key`, `channel` (`adjuster_api` \| `portal`) |
+| `document_downloaded` | Attachment file served via `GET /api/v1/claims/.../attachments/{key}` or portal equivalent; `after_state` JSON: `storage_key`, `channel` (`adjuster_api` \| `portal`) |
 | `document_accessed` | Presigned GET URL issued for S3-backed attachments (claim payload attachment URLs, document list/upload responses, process-with-files); `after_state` JSON: `storage_key`, `channel` (`adjuster_api` \| `portal`) |
 | `request_info` | Adjuster requested more info from claimant |
 | `escalate_to_siu` | Escalated to Special Investigations Unit |
@@ -736,7 +736,7 @@ Disbursement ledger for a claim: multiple payments (repair advances, rental, BI 
 
 **Authority:** Creating a row checks per-role dollar limits (`PAYMENT_ADJUSTER_LIMIT`, `PAYMENT_SUPERVISOR_LIMIT`, `PAYMENT_EXECUTIVE_LIMIT`); see [Configuration](configuration.md#disbursements--payment-authority). Actors `workflow` / `system` skip the check when recording automation.
 
-**API:** `POST/GET /api/claims/{claim_id}/payments`, `POST .../payments/{id}/issue`, `/clear`, `/void` ([`src/claim_agent/api/routes/payments.py`](../src/claim_agent/api/routes/payments.py)). Claimant portal exposes a read-only payment list.
+**API:** `POST/GET /api/v1/claims/{claim_id}/payments`, `POST .../payments/{id}/issue`, `/clear`, `/void` ([`src/claim_agent/api/routes/payments.py`](../src/claim_agent/api/routes/payments.py)). Claimant portal exposes a read-only payment list.
 
 **Idempotency:** Optional `external_ref` (e.g. `workflow_settlement:{workflow_run_id}`) is unique per claim when set; duplicate creates return the existing payment id. Concurrent creates with the same ref rely on that uniqueness; `PaymentRepository` treats a unique violation as “return existing id.” Operational note: optional auto-settlement rows (`PAYMENT_AUTO_RECORD_FROM_SETTLEMENT`) overlap with agent `record_claim_payment` calls if both record the same payout—see [Configuration](configuration.md#disbursements--payment-authority).
 
@@ -1113,7 +1113,7 @@ with get_replica_connection() as conn:
     ).fetchall()
 ```
 
-**Health check**: When `READ_REPLICA_DATABASE_URL` is configured, the `/api/health` endpoint includes a `database_replica` key in the `checks` dict (`"ok"`, `"error"`, or `"skipped"`). The overall health status is determined by the primary database only; a degraded replica does not change the top-level `status` field, but the `database_replica` field signals the issue.
+**Health check**: When `READ_REPLICA_DATABASE_URL` is configured, the `/api/v1/health` endpoint includes a `database_replica` key in the `checks` dict (`"ok"`, `"error"`, or `"skipped"`). The overall health status is determined by the primary database only; a degraded replica does not change the top-level `status` field, but the `database_replica` field signals the issue.
 
 **Routing guidance**: Use `get_replica_connection()` for:
 
@@ -1310,11 +1310,11 @@ patronictl -c /etc/patroni.yml list
 
 #### Health check integration
 
-The `/api/health` endpoint checks both the primary and replica databases. Integrate it with your load balancer or orchestrator:
+The `/api/v1/health` endpoint checks both the primary and replica databases. Integrate it with your load balancer or orchestrator:
 
 ```bash
 # Example: curl health and check exit code
-curl -sf http://localhost:8000/api/health | python3 -c "
+curl -sf http://localhost:8000/api/v1/health | python3 -c "
 import sys, json
 r = json.load(sys.stdin)
 sys.exit(0 if r.get('status') == 'ok' else 1)
@@ -1326,13 +1326,13 @@ For Kubernetes, add a liveness/readiness probe:
 ```yaml
 livenessProbe:
   httpGet:
-    path: /api/health
+    path: /api/v1/health
     port: 8000
   initialDelaySeconds: 10
   periodSeconds: 15
 readinessProbe:
   httpGet:
-    path: /api/health
+    path: /api/v1/health
     port: 8000
   initialDelaySeconds: 5
   periodSeconds: 10

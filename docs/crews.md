@@ -496,12 +496,12 @@ The Fraud crew is invoked **after**:
 
 **Location**: `src/claim_agent/crews/siu_crew.py`
 
-Investigates claims under Special Investigations Unit review. Performs document verification, records investigation, and case management including state fraud bureau filing. Sub-workflow invoked via `POST /claims/{claim_id}/siu-investigate`.
+Investigates claims under Special Investigations Unit review. Performs document verification, records investigation, and case management including state fraud bureau filing. Sub-workflow invoked via `POST /api/v1/claims/{claim_id}/siu-investigate`.
 
 ### Entry Conditions
 
 - **Claim status:** `under_investigation` or `fraud_suspected`
-- **Trigger:** On-demand via `POST /api/claims/{claim_id}/siu-investigate`
+- **Trigger:** On-demand via `POST /api/v1/claims/{claim_id}/siu-investigate`
 - **SIU case:** Creates case via adapter if not already present (e.g., manual escalation)
 
 ### Agents
@@ -562,7 +562,7 @@ flowchart TB
 
 ### Integration
 
-- **API:** `POST /claims/{claim_id}/siu-investigate` (RequireAdjuster)
+- **API:** `POST /api/v1/claims/{claim_id}/siu-investigate` (RequireAdjuster)
 - **Eligible statuses:** `under_investigation`, `fraud_suspected`
 - **SIU case:** Created automatically if missing (manual escalation)
 
@@ -975,7 +975,7 @@ Handles denials and coverage disputes. Flow: review denial reason → verify cov
 ### Entry Conditions
 
 - **Claim status:** `denied` (STATUS_DENIED)
-- **Trigger:** `POST /claims/{claim_id}/denial-coverage` with `{ "denial_reason": "...", "policyholder_evidence": "..." }`
+- **Trigger:** `POST /api/v1/claims/{claim_id}/denial-coverage` with `{ "denial_reason": "...", "policyholder_evidence": "..." }`
 
 ### Agents
 
@@ -1006,7 +1006,7 @@ flowchart TB
 
 **Location**: `src/claim_agent/crews/supplemental_crew.py`
 
-Sub-workflow for additional damage discovered during repair on existing partial loss claims. Invoked via `POST /claims/{claim_id}/supplemental` when a shop or adjuster reports supplemental damage. California CCR 2695.8 requires prompt inspection and authorization of supplemental payment.
+Sub-workflow for additional damage discovered during repair on existing partial loss claims. Invoked via `POST /api/v1/claims/{claim_id}/supplemental` when a shop or adjuster reports supplemental damage. California CCR 2695.8 requires prompt inspection and authorization of supplemental payment.
 
 ### Entry Conditions
 
@@ -1038,7 +1038,7 @@ flowchart TB
 
 ### Integration
 
-Supplemental is a **sub-workflow** (like Dispute), not a router-classified claim type. Entry point: `POST /claims/{claim_id}/supplemental` with body `{ "supplemental_damage_description": "...", "reported_by": "shop" }`.
+Supplemental is a **sub-workflow** (like Dispute), not a router-classified claim type. Entry point: `POST /api/v1/claims/{claim_id}/supplemental` with body `{ "supplemental_damage_description": "...", "reported_by": "shop" }`.
 
 ---
 
@@ -1060,7 +1060,7 @@ flowchart LR
 
 ### Integration
 
-- **Post-escalation**: Runs when a supervisor approves a claim via `POST /claims/{claim_id}/review/approve` or `claim-agent approve`
+- **Post-escalation**: Runs when a supervisor approves a claim via `POST /api/v1/claims/{claim_id}/review/approve` or `claim-agent approve`
 - **Optional reviewer decision**: Pass `reviewer_decision` with `confirmed_claim_type` and/or `confirmed_payout` to apply overrides
 - **Tools**: `get_escalation_context`, `parse_reviewer_decision`, `apply_reviewer_decision`
 
@@ -1080,7 +1080,7 @@ Performs a supervisor/compliance audit of the claim process. Reviews how the cla
 
 ### Entry Conditions
 
-- **Trigger**: On-demand via `POST /api/claims/{claim_id}/review` (supervisor role)
+- **Trigger**: On-demand via `POST /api/v1/claims/{claim_id}/review` (supervisor role)
 - **Input**: claim_id, claim_data, workflow_output from the latest run
 
 ### Agents
@@ -1119,7 +1119,7 @@ flowchart TB
 
 ### Integration
 
-- **API**: `POST /claims/{claim_id}/review` (RequireSupervisor)
+- **API**: `POST /api/v1/claims/{claim_id}/review` (RequireSupervisor)
 - **Persistence**: Report is recorded in `claim_audit_log` with `action="claim_review"`
 - **Tools**: `get_claim_process_context` aggregates claim record, audit log, workflow runs, task checkpoints, and notes
 

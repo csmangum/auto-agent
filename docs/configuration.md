@@ -33,7 +33,7 @@ cp .env.example .env
 | `RUN_MIGRATIONS_ON_STARTUP` | `true` | When using PostgreSQL, run `alembic upgrade head` on API startup. Set `false` if migrations are a separate deploy step. |
 | `FRESH_CLAIMS_DB_ON_STARTUP` | `false` | **Dev only:** if `true`, deletes and recreates the claims database on every server start. |
 | `ALEMBIC_SCRIPT_LOCATION` | (unset) | Path to the `alembic` revision directory. Required for SQLite when the app is not run from the repo root and the package is not installed editable; see [Database](database.md). |
-| `HEALTH_CHECK_NOTIFICATIONS` | `false` | When `true`, `/api/health` includes claimant notification readiness and returns **503** if no email/SMS channel is ready. See [Observability](observability.md#health-endpoint). |
+| `HEALTH_CHECK_NOTIFICATIONS` | `false` | When `true`, `/api/v1/health` includes claimant notification readiness and returns **503** if no email/SMS channel is ready. See [Observability](observability.md#health-endpoint). |
 | `CA_COMPLIANCE_PATH` | `data/california_auto_compliance.json` | Path to CA compliance data |
 | `CREWAI_VERBOSE` | `true` | CrewAI verbose mode (`true`/`false`) |
 | `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` | `150000` | Max tokens per claim before stopping |
@@ -50,14 +50,14 @@ cp .env.example .env
 
 ### Authentication and RBAC
 
-When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/*` endpoints (except `/api/health`, `/api/auth/login`, and `/api/auth/refresh`) require authentication.
+When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/v1/*` endpoints (except `/api/v1/health`, `/api/v1/auth/login`, and `/api/v1/auth/refresh`) require authentication.
 
 | Variable | Description |
 |---------|-------------|
 | `CLAIM_AGENT_ENVIRONMENT` | Default `development`. If set to anything other than `dev`/`development`/`test`/`testing` and no API keys or `JWT_SECRET` are configured, the API **refuses to start** (prevents anonymous admin access in production). Legacy alias: `ENVIRONMENT`. |
 | `API_KEYS` | Comma-separated entries. Each entry is `key:role` or `key:role:user_id`. The optional third segment sets API identity (`sub`) for RBAC and adjuster-scoped claims (`claims.assignee` must match `user_id`). Example: `sk-adj:adjuster:uuid-of-adjuster` |
 | `CLAIMS_API_KEY` | Single API key (backward compat). When set and `API_KEYS` unset, treated as admin role |
-| `JWT_SECRET` | Secret for signing/verifying access JWTs from `POST /api/auth/login` and `Authorization: Bearer`. Access token payload: `sub`, `role`, `token_use`=`access`. Refresh tokens issued by login are opaque DB-backed strings, not JWTs. |
+| `JWT_SECRET` | Secret for signing/verifying access JWTs from `POST /api/v1/auth/login` and `Authorization: Bearer`. Access token payload: `sub`, `role`, `token_use`=`access`. Refresh tokens issued by login are opaque DB-backed strings, not JWTs. |
 | `JWT_ACCESS_TTL_SECONDS` | Access JWT lifetime in seconds (default 900). |
 | `JWT_REFRESH_TTL_SECONDS` | Opaque refresh token lifetime in seconds (default 604800). |
 | `TRUST_FORWARDED_FOR` | Default `false`. If `true`, trust `X-Forwarded-For` for client IP (rate limiting) and `X-Forwarded-Proto` for HTTP→HTTPS redirects when `ENFORCE_HTTPS=true`. Enable only behind a trusted reverse proxy. |
@@ -69,11 +69,11 @@ When `API_KEYS`, `CLAIMS_API_KEY`, or `JWT_SECRET` is set, all `/api/*` endpoint
 | `CORS_METHODS` | Comma-separated HTTP methods for CORS (default `GET,HEAD,POST,PUT,PATCH,DELETE`). |
 | `CORS_HEADERS` | Comma-separated request headers for CORS. If set, **replaces** the built-in default list (not merged). See `.env.example` for the default header names. |
 
-**Roles**: `adjuster` (submit/view claims, docs; when using JWT or `key:role:user_id`, list/get/stats/review-queue are scoped to assigned claims), `supervisor` (all adjuster + reprocess, metrics, assign claims), `executive` (supervisor-level API access; reserve cap is `RESERVE_EXECUTIVE_LIMIT`, default 0 = no cap), `admin` (all + config, system, `/api/users`; may set `skip_authority_check` on reserve updates).
+**Roles**: `adjuster` (submit/view claims, docs; when using JWT or `key:role:user_id`, list/get/stats/review-queue are scoped to assigned claims), `supervisor` (all adjuster + reprocess, metrics, assign claims), `executive` (supervisor-level API access; reserve cap is `RESERVE_EXECUTIVE_LIMIT`, default 0 = no cap), `admin` (all + config, system, `/api/v1/users`; may set `skip_authority_check` on reserve updates).
 
 Pass credentials via `X-API-Key` header or `Authorization: Bearer <key>`.
 
-**Email/password login**: `POST /api/auth/login` with JSON `email` and `password` returns `access_token` and `refresh_token`. `POST /api/auth/refresh` with `refresh_token` rotates credentials. Requires `JWT_SECRET` and users in the `users` table (manage via `POST /api/users` as admin).
+**Email/password login**: `POST /api/v1/auth/login` with JSON `email` and `password` returns `access_token` and `refresh_token`. `POST /api/v1/auth/refresh` with `refresh_token` rotates credentials. Requires `JWT_SECRET` and users in the `users` table (manage via `POST /api/v1/users` as admin).
 
 ### Content Security Policy (dashboard)
 
@@ -87,11 +87,11 @@ Mutating claim endpoints support an optional **`Idempotency-Key`** request heade
 |----------|---------|
 | **Header** | `Idempotency-Key`: 1–256 characters; only `a-z`, `A-Z`, `0-9`, `_`, `-`. Invalid values → **400**. |
 | **Scoped key** | The server combines the header with HTTP method, request path, and a fingerprint of auth (`Authorization` if present) and client host so the same key is not shared across users or routes. |
-| **Success cache** | Only **HTTP 200** responses are stored and replayed. **4xx/5xx** are not cached; the in-progress row is released so the client can retry. |
+| **Success cache** | **HTTP 200** and **503** responses are stored and replayed. Other **4xx/5xx** are not cached; the in-progress row is released so the client can retry. |
 | **In flight** | If a second request uses the same key while the first is still processing → **409** with `Retry-After: 5`. |
 | **TTL** | Controlled by `IDEMPOTENCY_TTL_SECONDS`. After expiry, a new request with the same key is treated as a new operation. |
 
-**Endpoints that honor `Idempotency-Key`:** `POST /api/claims`, `POST /api/claims/process`, `POST /api/claims/process/async`, `POST /api/incidents`, `POST /api/claim-links`, `POST /api/claims/{claim_id}/portal-token`, and `POST /api/claims/generate` when the body requests submission (`submit: true`).
+**Endpoints that honor `Idempotency-Key`:** `POST /api/v1/claims`, `POST /api/v1/claims/process`, `POST /api/v1/claims/process/async`, `POST /api/v1/incidents`, `POST /api/v1/claim-links`, `POST /api/v1/claims/{claim_id}/portal-token`, and `POST /api/v1/claims/generate` when the body requests submission (`submit: true`).
 
 ### API rate limiting
 
@@ -170,12 +170,12 @@ Additional Mock Crew toggles (`MOCK_DOCUMENT_GENERATOR_*`, `MOCK_CLAIMANT_*`, `M
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAIMANT_PORTAL_ENABLED` | `true` | Enable claimant self-service routes (`/api/portal/*`). |
+| `CLAIMANT_PORTAL_ENABLED` | `true` | Enable claimant self-service routes (`/api/v1/portal/*`). |
 | `CLAIMANT_VERIFICATION_MODE` | `policy_vin` | Claimant verification: `token`, `policy_vin`, or `email`. |
 | `CLAIM_ACCESS_TOKEN_EXPIRY_DAYS` | `90` | Magic-link / access token lifetime when using token mode. |
-| `REPAIR_SHOP_PORTAL_ENABLED` | `false` | Repair shop portal (`/api/repair-portal`). |
+| `REPAIR_SHOP_PORTAL_ENABLED` | `false` | Repair shop portal (`/api/v1/repair-portal`). |
 | `REPAIR_SHOP_PORTAL_TOKEN_EXPIRY_DAYS` | `90` | Repair shop per-claim token lifetime. |
-| `THIRD_PARTY_PORTAL_ENABLED` | `false` | Third-party / lienholder portal (`/api/third-party-portal`). |
+| `THIRD_PARTY_PORTAL_ENABLED` | `false` | Third-party / lienholder portal (`/api/v1/third-party-portal`). |
 | `THIRD_PARTY_PORTAL_TOKEN_EXPIRY_DAYS` | `90` | Third-party portal token lifetime. |
 | `CHAT_MAX_TOOL_ROUNDS` | `5` | Max tool-call rounds per chat agent turn. |
 | `CHAT_MAX_MESSAGE_HISTORY` | `50` | Max messages retained per turn for the chat agent. |
@@ -251,7 +251,7 @@ OTP self-service verification (`OTP_ENABLED`, `OTP_PEPPER`, `OTP_*` limits) and 
 
 ### Reserve management
 
-Carrier case reserves (estimated ultimate cost) are stored on `claims.reserve_amount` with an append-only `reserve_history` table. Adjusters set reserves via `PATCH /api/claims/{claim_id}/reserve` (subject to limits); supervisors/admins use higher ceilings; executives use `RESERVE_EXECUTIVE_LIMIT` when set to a positive value (0 = no cap). Admin-only `skip_authority_check` on that endpoint is recorded in `reserve_history` and `claim_audit_log` with `[authority check bypassed]`. `GET /api/claims/{claim_id}/reserve/adequacy` compares the current reserve to the greater of positive `estimated_damage` and positive `payout_amount` (zeros are ignored) and returns `warnings` plus stable `warning_codes` (`RESERVE_NOT_SET`, `RESERVE_BELOW_ESTIMATE`, `RESERVE_BELOW_PAYOUT`, `RESERVE_BELOW_BENCHMARK`). Transitions to `closed` or `settled` can enforce the same benchmark via `RESERVE_CLOSE_SETTLE_ADEQUACY_GATE` ([State machine](state-machine.md#reserve-adequacy-gate-closed--settled)). The append-only `reserve_history` table also supports aggregate reporting over reserve movements. See [Database](database.md#reserve_history).
+Carrier case reserves (estimated ultimate cost) are stored on `claims.reserve_amount` with an append-only `reserve_history` table. Adjusters set reserves via `PATCH /api/v1/claims/{claim_id}/reserve` (subject to limits); supervisors/admins use higher ceilings; executives use `RESERVE_EXECUTIVE_LIMIT` when set to a positive value (0 = no cap). Admin-only `skip_authority_check` on that endpoint is recorded in `reserve_history` and `claim_audit_log` with `[authority check bypassed]`. `GET /api/v1/claims/{claim_id}/reserve/adequacy` compares the current reserve to the greater of positive `estimated_damage` and positive `payout_amount` (zeros are ignored) and returns `warnings` plus stable `warning_codes` (`RESERVE_NOT_SET`, `RESERVE_BELOW_ESTIMATE`, `RESERVE_BELOW_PAYOUT`, `RESERVE_BELOW_BENCHMARK`). Transitions to `closed` or `settled` can enforce the same benchmark via `RESERVE_CLOSE_SETTLE_ADEQUACY_GATE` ([State machine](state-machine.md#reserve-adequacy-gate-closed--settled)). The append-only `reserve_history` table also supports aggregate reporting over reserve movements. See [Database](database.md#reserve_history).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -263,7 +263,7 @@ Carrier case reserves (estimated ultimate cost) are stored on `claims.reserve_am
 
 ### Disbursements / payment authority
 
-Individual payments are stored in `claim_payments` (see [Database](database.md#claim_payments)). Adjusters create and transition rows via `POST /api/claims/{claim_id}/payments` and related issue/clear/void endpoints, subject to per-role ceilings. Settlement agents may call the `record_claim_payment` tool (workflow actor, authority bypass for automation). When `PAYMENT_AUTO_RECORD_FROM_SETTLEMENT` is true, a successful main workflow with a positive `extracted_payout` also inserts one authorized row keyed by `workflow_settlement:{workflow_run_id}` (idempotent per run).
+Individual payments are stored in `claim_payments` (see [Database](database.md#claim_payments)). Adjusters create and transition rows via `POST /api/v1/claims/{claim_id}/payments` and related issue/clear/void endpoints, subject to per-role ceilings. Settlement agents may call the `record_claim_payment` tool (workflow actor, authority bypass for automation). When `PAYMENT_AUTO_RECORD_FROM_SETTLEMENT` is true, a successful main workflow with a positive `extracted_payout` also inserts one authorized row keyed by `workflow_settlement:{workflow_run_id}` (idempotent per run).
 
 **Avoid double-counting:** Do not enable `PAYMENT_AUTO_RECORD_FROM_SETTLEMENT` while settlement agents are also calling `record_claim_payment` for the same total settlement amount (you would get one aggregate auto row plus one or more tool rows). Choose one approach: either rely on the tool for itemized payees, or turn on auto-record for a single summary row per workflow run and keep agents from recording that same payout again.
 
@@ -790,8 +790,8 @@ For testing without an API key:
 # Run unit tests (no API key needed)
 MOCK_DB_PATH=data/mock_db.json pytest tests/test_tools.py -v
 
-# Run integration tests (API key required)
-OPENAI_API_KEY=your-key pytest tests/test_crews.py -v
+# Run integration tests (mocked LLM; no API key required)
+MOCK_DB_PATH=data/mock_db.json pytest tests/integration/ -v -m "integration and not slow and not llm"
 ```
 
 ## Production Considerations

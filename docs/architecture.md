@@ -272,9 +272,9 @@ src/claim_agent/
 
 The React + Vite app under `frontend/` is not a single product surface:
 
-- **Adjuster / operator UI** — Routes under the main layout (`/`, `/claims`, workbench, docs, skills, etc.) use authenticated internal APIs (`/api/claims` and related), same pattern as the observability dashboard.
-- **Claimant self-service** — Routes `/portal/login`, `/portal/claims`, and `/portal/claims/:claimId` (`frontend/src/pages/Portal*.tsx`) talk to **`/api/portal/*`**, implemented in `src/claim_agent/api/routes/portal.py`, with claimant verification (access token, policy+VIN, or email depending on configuration). This is the real policyholder-facing flow.
-- **Role simulation** — `/simulate` (`frontend/src/pages/Simulation.tsx`) switches among `frontend/src/pages/simulation/*` (customer, repair shop, third party). Those views reuse dashboard-style data hooks (e.g. `useClaims`); they are **simulation-only** and do **not** use portal verification or `/api/portal/*`.
+- **Adjuster / operator UI** — Routes under the main layout (`/`, `/claims`, workbench, docs, skills, etc.) use authenticated internal APIs (`/api/v1/claims` and related), same pattern as the observability dashboard.
+- **Claimant self-service** — Routes `/portal/login`, `/portal/claims`, and `/portal/claims/:claimId` (`frontend/src/pages/Portal*.tsx`) talk to **`/api/v1/portal/*`**, implemented in `src/claim_agent/api/routes/portal.py`, with claimant verification (access token, policy+VIN, or email depending on configuration). This is the real policyholder-facing flow.
+- **Role simulation** — `/simulate` (`frontend/src/pages/Simulation.tsx`) switches among `frontend/src/pages/simulation/*` (customer, repair shop, third party). Those views reuse dashboard-style data hooks (e.g. `useClaims`); they are **simulation-only** and do **not** use portal verification or `/api/v1/portal/*`.
 
 For API contract coverage of the portal, see [`tests/test_portal_api.py`](../tests/test_portal_api.py). A concise route table lives in the [README](../README.md#portal-vs-simulation).
 
@@ -291,7 +291,7 @@ For API contract coverage of the portal, see [`tests/test_portal_api.py`](../tes
 | CLI | Typer | `main.py` |
 | MCP Server | FastMCP | [MCP Server](mcp-server.md) |
 | External Integrations | Adapter Pattern | [Adapters](adapters.md) |
-| Observability & portals UI | React + Vite | This section; [README](../README.md#observability-ui-dashboard) |
+| Observability & portals UI | React + Vite | This section; [README](../README.md#frontend-dashboard--adjuster-workbench) |
 
 ## Key Design Decisions
 
