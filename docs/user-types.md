@@ -46,9 +46,9 @@ When an adjuster calls `request_info` (status → `pending_info`), the follow-up
 
 **API endpoints:**
 
-- `POST /api/claims/{claim_id}/follow-up/run` – Run the follow-up workflow with a task description
-- `POST /api/claims/{claim_id}/follow-up/record-response` – Record a user response (webhook or manual)
-- `GET /api/claims/{claim_id}/follow-up` – List follow-up messages for a claim
+- `POST /api/v1/claims/{claim_id}/follow-up/run` – Run the follow-up workflow with a task description
+- `POST /api/v1/claims/{claim_id}/follow-up/record-response` – Record a user response (webhook or manual)
+- `GET /api/v1/claims/{claim_id}/follow-up` – List follow-up messages for a claim
 
 ### Flow Example
 
