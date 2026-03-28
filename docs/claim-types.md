@@ -109,7 +109,7 @@ flowchart TD
     B -->|Yes| C[DUPLICATE]
     B -->|No| D{prior_claim_id / reopening_reason / is_reopened?}
     D -->|Yes| E[REOPENED]
-    D -->|No| H{Same VIN/date exists?}
+    D -->|No| H{Duplicate signals: similarity ≥ threshold & within days window?}
     H -->|Yes| C
     H -->|No| I{Total loss keywords?}
     I -->|Yes| J[TOTAL_LOSS]
@@ -175,9 +175,7 @@ Claims matching existing claims in the system. For the formal workflow specifica
 
 ### Classification Criteria
 
-- Same VIN as an existing claim
-- Same or similar incident date
-- Similar incident description
+- Router duplicate classification uses **similarity scoring and a configurable days window**, not a naive “same VIN and same date” match. Pre-routing populates `existing_claims_for_vin` when **description similarity** meets a threshold **and** **incident dates** are within the configured window (stricter threshold for high-value claims); same VIN with different damage types is excluded. Thresholds and window come from routing / duplicate-detection settings (see `workflow/routing.py`).
 
 ### Similarity Thresholds
 
@@ -384,9 +382,7 @@ Settled claims being reopened for new damage, policyholder appeal, or similar. T
 
 ### Classification Criteria
 
-- `prior_claim_id` is present and references a prior settled claim
-- `reopening_reason` is present (e.g., new_damage, policyholder_appeal, additional_covered_damage)
-- `is_reopened` is true
+- **OR logic (any one is enough):** If `definitive_duplicate` is not true, the router classifies as `reopened` when **any** of the following appear in claim data: `prior_claim_id`, `reopening_reason`, or `is_reopened` true—matching `workflow/routing.py` (not all three required).
 
 ### Example
 
@@ -420,5 +416,8 @@ The project includes sample claims for testing in `tests/sample_claims/`:
 | `partial_loss_front_collision.json` | partial_loss |
 | `bodily_injury_claim.json` | bodily_injury |
 | `reopened_claim.json` | reopened |
+| `multi_vehicle_incident.json` | (multi-vehicle / incident grouping) |
+| `coverage_denied_theft.json` | coverage denied (theft) |
+| `territory_denied_mexico.json` | territory / jurisdiction |
 
 See [Getting Started](getting-started.md#sample-claims) for usage.

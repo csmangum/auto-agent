@@ -878,6 +878,8 @@ The Rental crew runs **after** Partial Loss crew and **before** Settlement crew 
 
 Runs as a shared post-workflow settlement phase for payout-ready Total Loss and Partial Loss claims. It standardizes settlement documentation, payment distribution, and closure.
 
+**Liability determination (orchestrator stage):** For `total_loss`, `partial_loss`, and `bodily_injury`, the main workflow runs **liability determination** after the primary workflow crew (and rental, when applicable for partial loss) and **before** settlement. That stage uses `create_liability_determination_crew` in the orchestrator pipeline (`_stage_liability_determination` in `workflow/stages.py`) so liability inputs are available to settlement and downstream stages.
+
 ### Flow Sequence
 
 ```mermaid
@@ -909,12 +911,12 @@ flowchart TB
 
 **Location**: `src/claim_agent/crews/subrogation_crew.py`
 
-Post-settlement recovery from at-fault parties. Runs for total_loss and partial_loss after Settlement. Flow: assess liability → build case → send demand → track recovery.
+Post-settlement recovery from at-fault parties. Runs after Settlement for claim types that use the shared settlement path (`total_loss`, `partial_loss`, `bodily_injury`). Flow: assess liability → build case → send demand → track recovery.
 
 ### Entry Conditions
 
-- **Claim type:** `total_loss` or `partial_loss` (runs after Settlement)
-- **Trigger:** Automatic when `_requires_settlement(claim_type)` is True
+- **Claim type:** `total_loss`, `partial_loss`, or `bodily_injury` (runs after Settlement)
+- **Trigger:** The same claim types that require settlement (`_requires_settlement(claim_type)` in `workflow/helpers.py`: `total_loss`, `partial_loss`, `bodily_injury`) are eligible for subrogation. The orchestrator runs subrogation **only after** the settlement stage completes for those types—`_requires_settlement` selects who enters the settlement/subrogation sequence, not a separate “immediate” trigger before settlement.
 
 ### Agents
 
