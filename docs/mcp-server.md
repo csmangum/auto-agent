@@ -14,7 +14,7 @@ flowchart TB
     
     subgraph MCP["MCP Server (FastMCP)"]
         B[stdio transport]
-        C[Tool Logic<br/>logic.py]
+        C[Tool Logic<br/>claim_agent.tools.*]
     end
     
     subgraph Data
@@ -169,15 +169,36 @@ def evaluate_damage(damage_description: str, estimated_repair_cost: float | None
 
 ```python
 @mcp.tool()
-def calculate_payout(vehicle_value: float, policy_number: str) -> str:
-    """Calculate total loss payout by subtracting policy deductible from vehicle value."""
+def calculate_payout(
+    vehicle_value: float,
+    policy_number: str,
+    damage_description: str = "",
+    coverage_type: str | None = None,
+    loss_state: str | None = None,
+    tax_title_fees: float | None = None,
+    owner_retain_salvage: bool = False,
+    salvage_value: float | None = None,
+    loan_balance: float | None = None,
+    claim_id: str | None = None,
+    vin: str | None = None,
+) -> str:
+    """Calculate total loss payout; optional loan_balance triggers gap coordination when applicable."""
 ```
 
 **Parameters:**
-- `vehicle_value` (float): Vehicle market value
+- `vehicle_value` (float): Vehicle market value (ACV base)
 - `policy_number` (string): Policy number for deductible lookup
+- `damage_description` (string, optional): Damage description for coverage inference
+- `coverage_type` (string, optional): Explicit coverage (e.g. collision vs comprehensive)
+- `loss_state` (string, optional): Loss jurisdiction for state-specific fee estimation
+- `tax_title_fees` (float, optional): Override estimated sales tax plus title/DMV fees
+- `owner_retain_salvage` (bool, optional): Whether the policyholder retains salvage (default false)
+- `salvage_value` (float, optional): Salvage value deducted when `owner_retain_salvage` is true
+- `loan_balance` (float, optional): When set with applicable gap coverage, coordinates gap carrier flow
+- `claim_id` (string, optional): Passed through for gap coordination when applicable
+- `vin` (string, optional): Passed through for gap coordination when applicable
 
-**Returns:** JSON with payout_amount, vehicle_value, deductible, calculation
+**Returns:** JSON with payout_amount, vehicle_value, deductible, calculation, and related ACV/gap/salvage fields when applicable
 
 ---
 
@@ -323,7 +344,7 @@ python -m claim_agent.mcp_server.server
 
 To add new tools:
 
-1. Add implementation in `tools/logic.py`:
+1. Add implementation in the appropriate `claim_agent.tools.*` module (e.g. `claims_logic.py`, `valuation_logic.py`):
 ```python
 def my_new_tool_impl(param: str) -> str:
     """Implementation logic."""

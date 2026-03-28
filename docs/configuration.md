@@ -221,6 +221,8 @@ See [.env.example](../.env.example) for `BACKUP_COMPRESS`, `BACKUP_S3_*`, paths/
 
 Logging, tracing, and metrics are configurable via: `CLAIM_AGENT_LOG_FORMAT`, `CLAIM_AGENT_LOG_LEVEL`, `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `CLAIM_AGENT_TRACE_LLM`, `CLAIM_AGENT_TRACE_TOOLS`, `CLAIM_AGENT_LOG_PROMPTS`, `CLAIM_AGENT_LOG_RESPONSES`. See [Observability](observability.md) for full details.
 
+The **health** endpoint (`GET /api/v1/health`, and the `/health` / `/healthz` aliases) returns **200** when all checks that run for your configuration are healthy. It returns **503** not only when critical dependencies (e.g. database) fail, but also when **optional** checks report unhealthy or degraded status—for example claimant notification readiness when `HEALTH_CHECK_NOTIFICATIONS=true` (see the row above and [Observability](observability.md#health-endpoint)).
+
 ### PII and Retention
 
 | Variable | Default | Description |
