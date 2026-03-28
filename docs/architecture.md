@@ -114,7 +114,7 @@ Claim data flows through the system as follows. The Router Crew receives **sanit
 
 ```mermaid
 flowchart LR
-    ClaimInput[ClaimInput] --> Router[Router Crew]
+    ClaimIn[Sanitized JSON · ClaimInput schema] --> Router[Router Crew]
     Router --> Crew[Workflow Crew]
     Crew --> Repo[Repository]
     Repo --> DB[(SQL DB)]
