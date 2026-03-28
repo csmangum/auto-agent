@@ -29,21 +29,21 @@ Use this document to track implementation progress and acceptance criteria.
 - [ ] **Acceptance**: Generates repair estimate JSON/PDF for claim context
 - [ ] **Acceptance**: Estimate line items align with damage description
 - [ ] **Acceptance**: Can generate damage photo references (delegates to Image Generator)
-- [ ] **Config**: `MOCK_DOCUMENT_GENERATOR_ENABLED`, `MOCK_DOCUMENT_OUTPUT_FORMAT`
+- [ ] **Config**: `MOCK_DOCUMENT_GENERATOR_ENABLED` *(planned: `MOCK_DOCUMENT_OUTPUT_FORMAT` — not in `.env.example` yet)*
 
 ### FR-4: Mock Repair Shop
 - [ ] **Implement** Mock Repair Shop agent/module
 - [ ] **Acceptance**: When `send_user_message` targets repair_shop, produces response
 - [ ] **Acceptance**: Can return supplemental estimate when configured
 - [ ] **Acceptance**: Response aligns with shop assignment and original estimate
-- [ ] **Config**: `MOCK_REPAIR_SHOP_ENABLED`, `MOCK_REPAIR_SHOP_BEHAVIOR`
+- [ ] **Config**: `MOCK_REPAIR_SHOP_ENABLED`, `MOCK_REPAIR_SHOP_RESPONSE_TEMPLATE` *(planned: `MOCK_REPAIR_SHOP_BEHAVIOR` — not in `.env.example` yet)*
 
 ### FR-5: Mock Third Party
 - [ ] **Implement** Mock Third Party agent/module
 - [ ] **Acceptance**: When `send_demand_letter` invoked, produces configurable response
 - [ ] **Acceptance**: Supports accept, reject, negotiate, no_response
-- [ ] **Acceptance**: Settlement amount follows `MOCK_THIRD_PARTY_SETTLEMENT_RATIO`
-- [ ] **Config**: `MOCK_THIRD_PARTY_ENABLED`, `MOCK_THIRD_PARTY_RESPONSE`, `MOCK_THIRD_PARTY_SETTLEMENT_RATIO`
+- [ ] **Acceptance**: Settlement amount follows demand outcome (`MOCK_THIRD_PARTY_OUTCOME`) *(planned: ratio tuning via env — not in `.env.example` yet)*
+- [ ] **Config**: `MOCK_THIRD_PARTY_ENABLED`, `MOCK_THIRD_PARTY_OUTCOME`
 
 ### FR-6: Mock Notifier
 - [ ] **Implement** Mock Notifier
@@ -56,8 +56,8 @@ Use this document to track implementation progress and acceptance criteria.
 - [ ] **Implement** Mock Webhook Receiver
 - [ ] **Acceptance**: Outbound webhooks are intercepted (no real HTTP)
 - [ ] **Acceptance**: Payloads are stored for test assertions
-- [ ] **Acceptance**: Configurable HTTP response status
-- [ ] **Config**: `MOCK_WEBHOOK_ENABLED`, `MOCK_WEBHOOK_CAPTURE_PATH`, `MOCK_WEBHOOK_RESPONSE_STATUS`
+- [ ] **Acceptance**: *(Planned)* Configurable HTTP response status for retry testing *(not in `.env.example` yet)*
+- [ ] **Config**: `MOCK_WEBHOOK_CAPTURE_ENABLED` *(planned: capture path / response status env vars — not in `.env.example` yet)*
 
 ### FR-8: Independent Configuration
 - [ ] **Acceptance**: Each mock role can be enabled/disabled via env
