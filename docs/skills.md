@@ -46,6 +46,7 @@ src/claim_agent/skills/
 ├── salvage_coordinator.md   # Salvage Coordinator
 ├── title_specialist.md      # Title Specialist
 ├── auction_liaison.md       # Auction Liaison
+├── liability_analyst.md     # Liability Analyst
 ├── liability_investigator.md # Liability Investigator
 ├── demand_specialist.md     # Demand Specialist
 ├── recovery_tracker.md      # Recovery Tracker

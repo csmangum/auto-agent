@@ -4,7 +4,7 @@ Adjuster-facing endpoints for regulatory and filing visibility. Requires API aut
 
 ## Fraud reporting
 
-**`GET /api/compliance/fraud-reporting`**
+**`GET /api/v1/compliance/fraud-reporting`**
 
 **Roles:** `adjuster`, `supervisor`, `admin`, or `executive` (see `RequireAdjuster` in the route).
 
@@ -63,15 +63,15 @@ Other statuses are not returned by this endpoint’s claim filter.
 
 ## Fraud reporting deadline alerts
 
-**`GET /api/compliance/fraud-reporting/deadlines`**
+**`GET /api/v1/compliance/fraud-reporting/deadlines`**
 
 **Roles:** `adjuster`, `supervisor`, `admin`, or `executive`.
 
-Returns NICB filing deadline alerts derived from `/api/compliance/fraud-reporting`:
+Returns NICB filing deadline alerts derived from `/api/v1/compliance/fraud-reporting`:
 
 - `alerts`: array of claim alerts where NICB is required and alert state is `due_soon` or `overdue`
 - `total_alerts`: number of alerts
 
 Each alert includes: `claim_id`, `status`, `loss_state`, `nicb_due_at`, `nicb_alert`, and `nicb_overdue`.
 
-For OpenAPI details and interactive testing, run the API server and open `/api/openapi/docs` (see [Getting Started](getting-started.md)).
+For OpenAPI details and interactive testing, run the API server and open `/api/v1/openapi/docs` (see [Getting Started](getting-started.md)).

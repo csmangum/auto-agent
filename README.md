@@ -85,8 +85,8 @@ The first run may download embedding models used for RAG (~tens of MB); subseque
 
 | Command | Description |
 |---------|-------------|
-| `claim-agent serve [--reload] [--port <port>] [--host <host>]` | Start REST API server |
-| `claim-agent process <file> [--attachment <file> ...]` | Process a claim from JSON (optionally attach photos, PDFs, estimates) |
+| `claim-agent serve [--reload] [--port <port>] [--host <host>] [--workers N]` | Start REST API server (`--workers` requires PostgreSQL) |
+| `claim-agent process <file> [--attachment/-a <file> ...]` | Process a claim from JSON (optionally attach photos, PDFs, estimates) |
 | `claim-agent status <id>` | Get claim status |
 | `claim-agent history <id>` | Get claim audit log |
 | `claim-agent reprocess <id> [--from-stage <stage>]` | Re-run workflow (optionally resume from a stage: `coverage_verification`, `economic_analysis`, `fraud_prescreening`, `duplicate_detection`, `router`, `escalation_check`, `workflow`, `task_creation`, `rental`, `liability_determination`, `settlement`, `subrogation`, `salvage`, `after_action`) |
@@ -102,7 +102,7 @@ The first run may download embedding models used for RAG (~tens of MB); subseque
 | `claim-agent retention-purge [--dry-run] [--years N] [--include-litigation-hold] [--export-before-purge]` | Purge archived claims past purge horizon (anonymize PII) |
 | `claim-agent retention-export [--dry-run] [--years N] [--include-litigation-hold]` | Export eligible archived claims to S3/Glacier (requires retention export settings) |
 | `claim-agent retention-report [--years N] [--purge-years N] [--audit-purge-years N] [--include-litigation-hold-audit]` | Retention audit report (counts by tier, litigation hold, pending archive/purge) |
-| `claim-agent audit-log-export --output FILE [-o] [--dry-run] [--years N] ...` | Export audit log rows for purged claims past audit horizon (NDJSON) |
+| `claim-agent audit-log-export --output/-o FILE [--dry-run] [--years N] ...` | Export audit log rows for purged claims past audit horizon (NDJSON) |
 | `claim-agent audit-log-purge [--dry-run] [--years N] [--ack-exported] ...` | Delete eligible audit log rows (requires `AUDIT_LOG_PURGE_ENABLED=true` and `--ack-exported`) |
 | `claim-agent litigation-hold --claim-id X` plus `--on` or `--off` | Set or clear litigation hold (exactly one of `--on` / `--off`) |
 | `claim-agent dsar-access --claimant-email X [--claim-id Y \| --policy P --vin V] [--fulfill]` | Submit DSAR access request (right-to-know) |
@@ -110,6 +110,8 @@ The first run may download embedding models used for RAG (~tens of MB); subseque
 | `claim-agent diary-escalate [--db PATH]` | Run deadline escalation (notify overdue, escalate to supervisor) |
 | `claim-agent ucspa-deadlines [--days N] [--webhooks / --no-webhooks]` | Check UCSPA deadlines; webhooks on by default (`--no-webhooks` to suppress) |
 | `claim-agent run-scheduler` | Run scheduler as a dedicated single-instance foreground process (requires `SCHEDULER_ENABLED=true`; do not run with the API server) |
+
+**Global options** (apply before any command): `--debug` (enable debug logging), `--json` (JSON log format).
 
 ## Sample Claims
 
@@ -160,16 +162,27 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 | [Adapter SLA](docs/adapter_sla.md) | Integration latency and availability targets |
 | [Actuarial reserve reporting](docs/actuarial-reserve-reporting.md) | Reserve report API endpoints |
 | [Eval suite gaps](docs/eval-suite-gaps.md) | Evaluation suite status and known gaps |
+| [Review Queue](docs/review-queue.md) | Human review queue operations |
+| [User Types](docs/user-types.md) | Personas and access levels |
+| [Pilot Data Seeding](docs/pilot_data_seeding.md) | Generating realistic test data |
+| [Deployment](docs/deployment.md) | Deployment and infrastructure |
+| [Disaster Recovery](docs/disaster-recovery.md) | Backup, restore, and DR procedures |
+| [Performance Benchmarks](docs/performance-benchmarks.md) | Performance testing and targets |
+| [Runbooks](docs/runbooks.md) | Operational runbooks |
+| [Compliance API](docs/compliance-api.md) | Regulatory compliance endpoints |
+| [API Integration Guide](docs/api-integration-guide.md) | REST API integration guide |
+| [Claims Route Refactoring](docs/claims-route-refactoring.md) | Route module split design |
 
 ## Project Layout
 
 ```
 src/claim_agent/
 ├── main.py           # CLI entry point
-├── context.py        # Workflow context helpers
+├── context.py        # ClaimContext / dependency injection for CLI, API, and workflow
 ├── events.py         # Event definitions
 ├── exceptions.py     # ClaimAgentError and domain exceptions
 ├── rbac_roles.py     # RBAC role name constants
+├── scheduler.py      # APScheduler integration (used by run-scheduler)
 ├── api/              # REST API (FastAPI routes, auth, deps)
 ├── config/           # LLM (llm.py), protocol (llm_protocol.py), settings (settings.py, settings_model.py)
 ├── agents/           # Agent definitions
@@ -213,7 +226,7 @@ export MOCK_DB_PATH=data/mock_db.json
 LOAD_TEST_CONCURRENCY=20 .venv/bin/pytest tests/load/ -v -m load -s
 ```
 
-With the venv activated, `python -m pytest …` works the same way.
+With the venv activated, `python -m pytest …` works the same way. Note: a bare `pytest` run (without explicit `-m`) uses `pyproject.toml` defaults which only exclude `llm` and `slow`; the explicit commands above are the recommended invocations for each test tier.
 
 E2E tests submit claims via the REST API and assert claim_id, status, and audit history. Load tests report throughput (claims/sec), latency percentiles (p50, p99), and error rate. Set `LOAD_TEST_CONCURRENCY` for concurrency (default 10). Use `LOAD_TEST_OUTPUT=report.json` to write metrics to a file.
 
@@ -292,17 +305,19 @@ Visit http://localhost:5173. The Vite dev server proxies `/api` to the backend.
 
 ### Portal vs simulation
 
-The SPA exposes **two different experiences**; do not confuse them:
+The SPA exposes **several distinct surfaces**; do not confuse them:
 
 | Surface | Route(s) | Purpose | API |
 |---------|----------|---------|-----|
-| Adjuster / operator UI | `/`, `/claims`, `/workbench`, `/workbench/queue`, `/workbench/diary` | Dashboard, workbench, claim operations | Authenticated `/api/claims` (and related) |
-| **Claimant self-service** | `/portal/login`, `/portal/claims`, … | Token / policy+VIN / email verification; status, documents, messages, repair status, payments, rental slice, disputes (as implemented) | `/api/portal/*` |
-| **Role simulation** | `/simulate` | Demo/testing: pick customer, repair shop, or third party and browse claims **without** claimant verification | Same internal hooks as the dashboard (e.g. `useClaims`), **not** `/api/portal/*` |
+| Adjuster / operator UI | `/`, `/claims`, `/workbench`, `/workbench/queue`, `/workbench/diary` | Dashboard, workbench, claim operations | Authenticated `/api/v1/claims` (and related) |
+| **Claimant self-service** | `/portal/login`, `/portal/claims`, … | Token / policy+VIN / email verification; status, documents, messages, repair status, payments, rental slice, disputes (as implemented) | `/api/v1/portal/*` |
+| **Repair shop portal** | `/repair-portal/…` | Per-claim magic token access for repair shops | `/api/v1/repair-portal/*` |
+| **Third-party portal** | `/third-party-portal/…` | Counterparty / lienholder access | `/api/v1/third-party-portal/*` |
+| **Role simulation** | `/simulate` | Demo/testing: pick customer, repair shop, or third party and browse claims **without** claimant verification | Same internal hooks as the dashboard (e.g. `useClaims`), **not** `/api/v1/portal/*` |
 
 Portal API behavior is covered by [`tests/test_portal_api.py`](tests/test_portal_api.py). Repair shop portal routes are covered by [`tests/test_repair_portal_api.py`](tests/test_repair_portal_api.py). Enable claimant routes with `CLAIMANT_PORTAL_ENABLED` and repair shop routes with `REPAIR_SHOP_PORTAL_ENABLED` (see `.env.example`).
 
-**REST API**: The backend exposes a REST API for programmatic access. OpenAPI spec: http://localhost:8000/api/openapi.json. Interactive docs: http://localhost:8000/api/openapi/docs. When auth is enabled (CLAIMS_API_KEY or API_KEYS), an API key is required to access OpenAPI docs.
+**REST API**: The backend exposes a REST API for programmatic access. OpenAPI spec: http://localhost:8000/api/v1/openapi.json. Interactive docs: http://localhost:8000/api/v1/openapi/docs. Legacy `/api/…` paths redirect to `/api/v1/…`. When auth is enabled (CLAIMS_API_KEY or API_KEYS), an API key is required to access OpenAPI docs.
 
 **Production**: Build with `cd frontend && npm run build`. The backend serves `frontend/dist` when present.
 

@@ -6,7 +6,7 @@ Human-in-the-loop claims use `status = needs_review`. The backend exposes a revi
 
 | Area | Route | Behavior |
 |------|-------|----------|
-| Assignment queue | `/workbench/queue` | Lists review-queue claims with filters (priority, assignee, older-than), pagination, and **assign** (`PATCH /api/claims/{id}/assign`). Links to claim detail for deeper actions. |
+| Assignment queue | `/workbench/queue` | Lists review-queue claims with filters (priority, assignee, older-than), pagination, and **assign** (`PATCH /api/v1/claims/{id}/assign`). Links to claim detail for deeper actions. |
 | Workbench home | `/workbench` | Summary cards and shortcuts including “My assignments” / queue links (`useReviewQueue`). |
 
 Implementation: [`frontend/src/pages/AssignmentQueue.tsx`](../frontend/src/pages/AssignmentQueue.tsx), [`frontend/src/pages/WorkbenchDashboard.tsx`](../frontend/src/pages/WorkbenchDashboard.tsx).
@@ -15,12 +15,12 @@ Implementation: [`frontend/src/pages/AssignmentQueue.tsx`](../frontend/src/pages
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/claims/review-queue` | List claims needing review. Query: `assignee`, `priority`, `older_than_hours`, `limit`, `offset` |
-| `PATCH /api/claims/{claim_id}/assign` | Assign claim to adjuster |
-| `POST /api/claims/{claim_id}/review/approve` | Approve and re-run workflow (supervisor) |
-| `POST /api/claims/{claim_id}/review/reject` | Reject (`reason` in body) |
-| `POST /api/claims/{claim_id}/review/request-info` | Request info (`note` in body) |
-| `POST /api/claims/{claim_id}/review/escalate-to-siu` | Escalate to SIU |
+| `GET /api/v1/claims/review-queue` | List claims needing review. Query: `assignee`, `priority`, `older_than_hours`, `limit`, `offset` |
+| `PATCH /api/v1/claims/{claim_id}/assign` | Assign claim to adjuster |
+| `POST /api/v1/claims/{claim_id}/review/approve` | Approve and re-run workflow (supervisor) |
+| `POST /api/v1/claims/{claim_id}/review/reject` | Reject (`reason` in body) |
+| `POST /api/v1/claims/{claim_id}/review/request-info` | Request info (`note` in body) |
+| `POST /api/v1/claims/{claim_id}/review/escalate-to-siu` | Escalate to SIU |
 
 Full detail: [adjuster-workflow.md](adjuster-workflow.md).
 

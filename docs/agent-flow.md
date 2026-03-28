@@ -6,6 +6,8 @@ For crew details, see [Crews](crews.md). For claim classification, see [Claim Ty
 
 ## High-Level Flow
 
+Before the Router Crew, `run_claim_workflow` runs **coverage verification** (FNOL coverage gate), **economic analysis** (high-value thresholds), **fraud prescreening**, and **duplicate detection** (duplicate candidate search). The high-level diagram below begins at classification; those steps are upstream of the Router.
+
 ```mermaid
 flowchart TB
     subgraph Input
@@ -86,6 +88,8 @@ Creates audit log entries. See [Database](database.md) for schema.
 
 ### 3. Classification (Router Crew)
 
+The Router stage runs only after **coverage verification**, **economic analysis**, **fraud prescreening**, and **duplicate detection** complete (or short-circuit with an early response where applicable).
+
 Router and workflow crew kickoffs use **retry with exponential backoff** for transient LLM failures. **Token and call budgets** (configurable via `CLAIM_AGENT_MAX_TOKENS_PER_CLAIM` and `CLAIM_AGENT_MAX_LLM_CALLS_PER_CLAIM`) are enforced; processing stops if limits are exceeded.
 
 The router returns **structured JSON** with `claim_type`, `confidence` (0.0–1.0), and `reasoning`. When confidence is below `ROUTER_CONFIDENCE_THRESHOLD` (default 0.7), the claim is escalated to `needs_review` for human classification before any workflow runs. Optionally, `ROUTER_VALIDATION_ENABLED=true` runs a second LLM call; if validation returns high confidence, the workflow proceeds (re-classification if validation disagrees).
@@ -131,9 +135,13 @@ elif claim_type == "duplicate":
     crew = create_duplicate_crew(llm)
 elif claim_type == "fraud":
     crew = create_fraud_detection_crew(llm)
+elif claim_type == "bodily_injury":
+    crew = create_bodily_injury_crew(llm)
 elif claim_type == "partial_loss":
     crew = create_partial_loss_crew(llm)
 else:
+    # total_loss and any other routed type (reopened is handled separately: Reopened crew
+    # runs first, then claim_type is updated to the target workflow before this branch)
     crew = create_total_loss_crew(llm)
 
 # Mirror run_claim_workflow: enrich claim_data with claim_id and claim_type (from steps 2–3)
@@ -160,6 +168,8 @@ if claim_type in {"total_loss", "partial_loss"}:
         salvage_crew = create_salvage_crew(llm)
         workflow_result = salvage_crew.kickoff(...)
 ```
+
+After the primary workflow crew (and any reopened → target routing in `workflow/stages.py`), the orchestrator runs **task creation**, **rental**, **liability determination**, then **settlement** / **subrogation** / **salvage** as above, and finally **after-action** before final status and persistence.
 
 See [Crews](crews.md) for crew details.
 
@@ -196,6 +206,9 @@ repo.update_claim_status(claim_id, final_status, details=workflow_output)
 | total_loss | settled |
 | fraud | fraud_suspected |
 | partial_loss | settled |
+| bodily_injury | settled |
+
+**Reopened:** The Reopened crew runs first and the effective `claim_type` becomes the target workflow (`partial_loss`, `total_loss`, or `bodily_injury`); final status follows that target (typically `settled` for those types).
 
 ## Agent Communication
 

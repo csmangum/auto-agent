@@ -41,21 +41,27 @@ flowchart LR
 
 ## Supported states
 
-RAG is scoped by state. Supported jurisdictions:
+RAG is scoped by state. Supported jurisdictions (per `SUPPORTED_STATES` in `claim_agent.rag.constants`):
 
-| State     | Policy / compliance data |
-|----------|---------------------------|
-| California | Yes (default)            |
-| Texas    | Yes                      |
-| Florida  | Yes                      |
-| New York | Yes                      |
+| State          | Policy language | Compliance data |
+|----------------|-----------------|-----------------|
+| California     | Yes (default)   | Yes             |
+| Texas          | Yes             | Yes             |
+| Florida        | Yes             | Yes             |
+| New York       | Yes             | Yes             |
+| Georgia        | —               | Yes             |
+| New Jersey     | —               | —               |
+| Pennsylvania   | —               | —               |
+| Illinois       | —               | —               |
+
+States without data files are recognized by `normalize_state()` and accepted by tools/retriever (returning empty results rather than errors) but have no indexed content until data files are added.
 
 Constants: `claim_agent.rag.constants.SUPPORTED_STATES`, `DEFAULT_STATE` ("California"). Use `normalize_state(value)` to validate and get canonical title-case names.
 
 ## Data sources
 
 - **Policy language**: `data/<state>_auto_policy_language.json` — policy terms, coverage, exclusions, definitions. Exists for California, Texas, Florida, and New York.
-- **Compliance**: `data/<state>_auto_compliance.json` — regulations, deadlines, disclosures, prohibited practices. Currently only California (`california_auto_compliance.json`) has compliance data; other states can be added later.
+- **Compliance**: `data/<state>_auto_compliance.json` — regulations, deadlines, disclosures, prohibited practices. Exists for California, Texas, Florida, New York, and Georgia. Additional states can be added by creating the corresponding JSON file.
 
 Files must include a `metadata` section with at least `data_type` (`"policy_language"` or `"compliance"`) and `state`. The chunker uses structure (sections, provisions, exclusions, deadlines, etc.) to produce meaningful chunks.
 
@@ -130,7 +136,7 @@ Crews that use RAG (e.g. Total Loss) pass `state` and `use_rag` into agent facto
 
 ## RAG tools (agents)
 
-Defined in `claim_agent.tools.rag_tools`; all accept state (California, Texas, Florida, New York) and use `normalize_state`. Listed in [Tools](tools.md) under RAG.
+Defined in `claim_agent.tools.rag_tools`; all accept a state from `SUPPORTED_STATES` (California, Texas, Florida, New York, Georgia, New Jersey, Pennsylvania, Illinois) and use `normalize_state`. Listed in [Tools](tools.md) under RAG.
 
 | Tool | Purpose |
 |------|--------|

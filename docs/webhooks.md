@@ -23,7 +23,12 @@ Outbound webhooks notify external systems when claim status changes or when repa
 | `claim.needs_review` | Escalated to human review |
 | `claim.failed` | Workflow failed |
 | `claim.opened` | Claim opened for claimant (status: open) |
-| `claim.closed` | Claim resolved (closed, duplicate, fraud_suspected, settled) |
+| `claim.closed` | Claim resolved (closed, duplicate, fraud_suspected, fraud_confirmed, settled) |
+| `claim.purged` | Claim purged (`purged` status) |
+| `claim.disputed` | Claim disputed (`disputed` status) |
+| `claim.dispute_resolved` | Dispute resolved (`dispute_resolved` status) |
+| `claim.partial_loss` | Partial loss workflow outcome (`partial_loss` status) |
+| `claim.timeout` | Workflow wall-clock limit exceeded; payload includes `claim_id`, `elapsed_seconds`, `timeout_seconds`, `reason` |
 | `claim.denied` | Rejected by adjuster |
 | `claim.pending_info` | More info requested |
 | `claim.under_investigation` | Escalated to SIU |

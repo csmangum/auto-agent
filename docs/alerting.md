@@ -83,10 +83,10 @@ receivers:
 
 ## Health Check
 
-The health endpoint (`GET /api/health`, `/health`, or `/healthz`) returns:
+The health endpoint (`GET /api/v1/health`, `/health`, or `/healthz`) returns:
 
-- **200** when the database is connected
-- **503** when the database is unreachable
+- **200** when the database is connected and optional checks pass
+- **503** when the database is unreachable or optional health checks (e.g. `HEALTH_CHECK_NOTIFICATIONS`) report degraded status
 
 Use it for load balancer health checks or Kubernetes liveness/readiness probes:
 

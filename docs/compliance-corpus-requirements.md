@@ -15,6 +15,9 @@ Requirements for a RAG corpus that provides prompt context and agentic search to
 | Florida | `data/florida_auto_policy_language.json` | Complete |
 | New York | `data/new_york_auto_policy_language.json` | Complete |
 | Georgia | — | Gap (compliance JSON added; policy language file not yet) |
+| New Jersey | — | Gap (corpus data file not created yet; state is in `SUPPORTED_STATES` / RAG) |
+| Pennsylvania | — | Gap (corpus data file not created yet; state is in `SUPPORTED_STATES` / RAG) |
+| Illinois | — | Gap (corpus data file not created yet; state is in `SUPPORTED_STATES` / RAG) |
 
 ### Compliance / Regulatory (statutes, regulations, deadlines, disclosures)
 
@@ -25,8 +28,13 @@ Requirements for a RAG corpus that provides prompt context and agentic search to
 | Florida | `data/florida_auto_compliance.json` | Complete |
 | New York | `data/new_york_auto_compliance.json` | Complete |
 | Georgia | `data/georgia_auto_compliance.json` | Partial (diminished value / 17c; expand over time) |
+| New Jersey | — | Gap (corpus data file not created yet; state is in `SUPPORTED_STATES` / RAG) |
+| Pennsylvania | — | Gap (corpus data file not created yet; state is in `SUPPORTED_STATES` / RAG) |
+| Illinois | — | Gap (corpus data file not created yet; state is in `SUPPORTED_STATES` / RAG) |
 
-California, Texas, Florida, New York, and Georgia compliance JSON files under `data/` are ingested by the RAG chunker (`*_auto_compliance.json`). Compliance tools (`get_compliance_deadlines`, `get_required_disclosures`, `get_fraud_detection_guidance`, `get_repair_standards`, `get_total_loss_requirements`, `search_state_compliance`) return state-specific results when passed the appropriate state.
+RAG and compliance tools accept all **eight** states in `SUPPORTED_STATES`: California, Texas, Florida, New York, Georgia, New Jersey, Pennsylvania, and Illinois. Compliance JSON files under `data/` named `*_auto_compliance.json` are ingested by the RAG chunker for states where those files exist (CA, TX, FL, NY, GA today). **New Jersey, Pennsylvania, and Illinois** are supported at the API/tool layer but do not yet have `data/<state>_auto_compliance.json` (or policy language) files—add those to match the first five states.
+
+Compliance tools (`get_compliance_deadlines`, `get_required_disclosures`, `get_fraud_detection_guidance`, `get_repair_standards`, `get_total_loss_requirements`, `search_state_compliance`) return state-specific results when passed the appropriate state and corpus data is present for that state.
 
 ---
 

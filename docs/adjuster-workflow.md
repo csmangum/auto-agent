@@ -40,12 +40,12 @@ When you **approve** a claim, the system (1) runs the Human Review Handback crew
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/claims/review-queue` | List claims needing review. Query params: `assignee`, `priority`, `older_than_hours` |
-| PATCH | `/api/claims/{claim_id}/assign` | Assign claim. Body: `{ "assignee": "user-123" }` |
-| POST | `/api/claims/{claim_id}/review/approve` | Approve and reprocess (supervisor+). Optional body: `{ "reviewer_decision": { "confirmed_claim_type": "...", "confirmed_payout": N, "notes": "..." } }` |
-| POST | `/api/claims/{claim_id}/review/reject` | Reject. Body: `{ "reason": "..." }` |
-| POST | `/api/claims/{claim_id}/review/request-info` | Request info. Body: `{ "note": "..." }` |
-| POST | `/api/claims/{claim_id}/review/escalate-to-siu` | Escalate to SIU |
+| GET | `/api/v1/claims/review-queue` | List claims needing review. Query params: `assignee`, `priority`, `older_than_hours` |
+| PATCH | `/api/v1/claims/{claim_id}/assign` | Assign claim. Body: `{ "assignee": "user-123" }` |
+| POST | `/api/v1/claims/{claim_id}/review/approve` | Approve and reprocess (supervisor+). Optional body: `{ "reviewer_decision": { "confirmed_claim_type": "...", "confirmed_payout": N, "notes": "..." } }` |
+| POST | `/api/v1/claims/{claim_id}/review/reject` | Reject. Body: `{ "reason": "..." }` |
+| POST | `/api/v1/claims/{claim_id}/review/request-info` | Request info. Body: `{ "note": "..." }` |
+| POST | `/api/v1/claims/{claim_id}/review/escalate-to-siu` | Escalate to SIU |
 
 All require adjuster role; approve requires supervisor role.
 
@@ -92,15 +92,15 @@ The frontend adjuster workbench maps to the following routes and API endpoints (
 | Capability | Frontend Route | API Endpoints |
 |------------|---------------|---------------|
 | **Workbench dashboard** | `/workbench` | — |
-| **Assignment / review queue** | `/workbench/queue` | `GET /api/claims/review-queue`, `PATCH /api/claims/{id}/assign` |
-| **Diary / calendar** | `/workbench/diary` | `GET /api/tasks`, `GET /api/tasks/overdue`, `GET /api/diary/compliance-templates` |
-| **Per-claim detail** | `/claims/:claimId` | `GET /api/claims/{id}` |
-| — Notes | `/claims/:claimId` (Notes tab) | `GET/POST /api/claims/{id}/notes` |
-| — Documents | `/claims/:claimId` (Documents tab) | `GET/POST /api/claims/{id}/documents`, `GET/POST /api/claims/{id}/document-requests` |
-| — Reserves | `/claims/:claimId` (Reserves tab) | `PATCH /api/claims/{id}/reserve`, `GET /api/claims/{id}/reserve-history`, `GET /api/claims/{id}/reserve/adequacy` |
-| — Payments | `/claims/:claimId` (Payments tab) | `GET/POST /api/claims/{id}/payments`, `POST .../payments/{pid}/issue` |
-| — Communications / follow-up | `/claims/:claimId` (Comms tab) | `GET/POST /api/claims/{id}/follow-up`, `POST /api/claims/{id}/follow-up/record-response` |
-| — Coverage / denial | `/claims/:claimId` (Coverage tab) | `POST /api/claims/{id}/denial-coverage` |
+| **Assignment / review queue** | `/workbench/queue` | `GET /api/v1/claims/review-queue`, `PATCH /api/v1/claims/{id}/assign` |
+| **Diary / calendar** | `/workbench/diary` | `GET /api/v1/tasks`, `GET /api/v1/tasks/overdue`, `GET /api/v1/diary/compliance-templates` |
+| **Per-claim detail** | `/claims/:claimId` | `GET /api/v1/claims/{id}` |
+| — Notes | `/claims/:claimId` (Notes tab) | `GET/POST /api/v1/claims/{id}/notes` |
+| — Documents | `/claims/:claimId` (Documents tab) | `GET/POST /api/v1/claims/{id}/documents`, `GET/POST /api/v1/claims/{id}/document-requests` |
+| — Reserves | `/claims/:claimId` (Reserves tab) | `PATCH /api/v1/claims/{id}/reserve`, `GET /api/v1/claims/{id}/reserve-history`, `GET /api/v1/claims/{id}/reserve/adequacy` |
+| — Payments | `/claims/:claimId` (Payments tab) | `GET/POST /api/v1/claims/{id}/payments`, `POST .../payments/{pid}/issue` |
+| — Communications / follow-up | `/claims/:claimId` (Comms tab) | `GET/POST /api/v1/claims/{id}/follow-up`, `POST /api/v1/claims/{id}/follow-up/record-response` |
+| — Coverage / denial | `/claims/:claimId` (Coverage tab) | `POST /api/v1/claims/{id}/denial-coverage` |
 
 ## Related
 

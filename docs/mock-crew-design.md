@@ -67,8 +67,9 @@ Based on codebase analysis, the following external interactions must be mocked:
 
 **Configuration**:
 - `MOCK_CLAIMANT_ENABLED`: bool
-- `MOCK_CLAIMANT_RESPONSE_DELAY_MS`: int (0 for sync)
 - `MOCK_CLAIMANT_RESPONSE_STRATEGY`: `immediate` | `delayed` | `refuse` | `partial`
+
+*(Planned / not yet implemented: configurable response delay via environment — not exposed in `.env.example` today.)*
 
 ---
 
@@ -92,8 +93,10 @@ Based on codebase analysis, the following external interactions must be mocked:
 
 **Configuration**:
 - `MOCK_IMAGE_GENERATOR_ENABLED`: bool
-- `MOCK_IMAGE_MODE`: `placeholder` | `generated` (model-based)
-- `MOCK_VISION_ANALYSIS_SOURCE`: `claim_context` | `deterministic` | `passthrough` (passthrough = real API, for comparison)
+- `MOCK_IMAGE_MODEL`: image-generation model id (when model-based generation is used)
+- `MOCK_IMAGE_VISION_ANALYSIS_SOURCE`: `claim_context` | `deterministic` | `passthrough` (passthrough = real API, for comparison)
+
+*(Planned / not yet implemented: choosing placeholder vs model-generated images via configuration — not in `.env.example` today.)*
 
 ---
 
@@ -116,7 +119,8 @@ Based on codebase analysis, the following external interactions must be mocked:
 
 **Configuration**:
 - `MOCK_DOCUMENT_GENERATOR_ENABLED`: bool
-- `MOCK_DOCUMENT_OUTPUT_FORMAT`: `json` | `pdf` | `both`
+
+*(Planned / not yet implemented: JSON vs PDF output toggle for mock documents — not in `.env.example` today.)*
 
 ---
 
@@ -139,7 +143,9 @@ Based on codebase analysis, the following external interactions must be mocked:
 
 **Configuration**:
 - `MOCK_REPAIR_SHOP_ENABLED`: bool
-- `MOCK_REPAIR_SHOP_BEHAVIOR`: `cooperative` | `delayed` | `supplement_required` | `refuse`
+- `MOCK_REPAIR_SHOP_RESPONSE_TEMPLATE`: default acknowledgment text for mock shop replies
+
+*(Planned / not yet implemented: cooperative / delayed / supplement / refuse shop personas — not in `.env.example` today.)*
 
 ---
 
@@ -162,8 +168,9 @@ Based on codebase analysis, the following external interactions must be mocked:
 
 **Configuration**:
 - `MOCK_THIRD_PARTY_ENABLED`: bool
-- `MOCK_THIRD_PARTY_RESPONSE`: `accept` | `reject` | `negotiate` | `no_response`
-- `MOCK_THIRD_PARTY_SETTLEMENT_RATIO`: float (e.g., 0.9 = 90% of demand)
+- `MOCK_THIRD_PARTY_OUTCOME`: `accept` | `reject` | `negotiate` | `no_response`
+
+*(Planned / not yet implemented: settlement amount as a ratio of demand — not in `.env.example` today.)*
 
 ---
 
@@ -203,9 +210,9 @@ Based on codebase analysis, the following external interactions must be mocked:
 - Stored payloads; configurable HTTP status for simulation.
 
 **Configuration**:
-- `MOCK_WEBHOOK_ENABLED`: bool
-- `MOCK_WEBHOOK_CAPTURE_PATH`: optional file path for payload dump
-- `MOCK_WEBHOOK_RESPONSE_STATUS`: int (default 200)
+- `MOCK_WEBHOOK_CAPTURE_ENABLED`: bool (capture outbound webhook payloads in-memory for tests)
+
+*(Planned / not yet implemented: file payload dump path and simulated HTTP status for webhook tests — not in `.env.example` today.)*
 
 ---
 
@@ -245,7 +252,7 @@ Based on codebase analysis, the following external interactions must be mocked:
 
 ### 5.2 Wiring Strategy
 
-- **Adapter swap**: Use env vars (e.g., `VISION_ADAPTER=mock`, `NOTIFICATION_ADAPTER=mock`) to swap real implementations for mock implementations at runtime.
+- **Adapter swap**: Use env vars (e.g., `VISION_ADAPTER=mock`) plus **Mock Crew** toggles (`MOCK_CREW_ENABLED` and per-role flags in `.env.example`) so tools use mock intercepts instead of real vision, notifications, webhooks, etc. There is no `NOTIFICATION_ADAPTER=mock` in configuration today.
 - **Test fixtures**: `mock_crew` fixture that starts all enabled mock agents and resets state between tests.
 - **CrewAI integration**: Mock agents can be CrewAI agents with tools that the claim system "calls" indirectly—or simpler: Python functions that are injected into the adapter/tool layer.
 
@@ -350,28 +357,26 @@ MOCK_CLAIMANT_RESPONSE_STRATEGY=immediate
 
 # Mock Image Generator
 MOCK_IMAGE_GENERATOR_ENABLED=true
-MOCK_IMAGE_MODE=placeholder
-MOCK_VISION_ANALYSIS_SOURCE=claim_context
+MOCK_IMAGE_MODEL=google/gemini-2.0-flash-exp
+MOCK_IMAGE_VISION_ANALYSIS_SOURCE=claim_context
 
 # Mock Document Generator
 MOCK_DOCUMENT_GENERATOR_ENABLED=true
 
 # Mock Repair Shop
 MOCK_REPAIR_SHOP_ENABLED=true
-MOCK_REPAIR_SHOP_BEHAVIOR=cooperative
+MOCK_REPAIR_SHOP_RESPONSE_TEMPLATE=Repair shop acknowledged receipt of request.
 
 # Mock Third Party
 MOCK_THIRD_PARTY_ENABLED=true
-MOCK_THIRD_PARTY_RESPONSE=accept
-MOCK_THIRD_PARTY_SETTLEMENT_RATIO=0.95
+MOCK_THIRD_PARTY_OUTCOME=accept
 
 # Mock Notifier
 MOCK_NOTIFIER_ENABLED=true
 MOCK_NOTIFIER_AUTO_RESPOND=true
 
 # Mock Webhook
-MOCK_WEBHOOK_ENABLED=true
-MOCK_WEBHOOK_CAPTURE_PATH=/tmp/mock_webhooks.jsonl
+MOCK_WEBHOOK_CAPTURE_ENABLED=true
 ```
 
 ---

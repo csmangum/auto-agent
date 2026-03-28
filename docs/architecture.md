@@ -61,6 +61,8 @@ flowchart TB
     Adapters --> Data
 ```
 
+**Orchestration note:** In `workflow/orchestrator.py`, several stages run **before** the Router Crew: **coverage verification** (FNOL coverage gate), **economic analysis** (high-value / total-loss thresholds), **fraud prescreening**, and **duplicate detection** (duplicate candidate search). After the Router and escalation check, the pipeline runs the primary **workflow crew**, then **task creation**, **rental**, **liability determination** (before settlement), **settlement**, **subrogation**, **salvage** (when applicable), and **after-action**. The diagrams below emphasize routing and crews; this is the full stage order in code.
+
 **Data Layer:** The claims database is **SQLite by default** (`data/claims.db`) or **PostgreSQL** when `DATABASE_URL` is set (same schema via Alembic). Mock Data (`MOCK_DB_PATH`, e.g. `data/mock_db.json`) provides reference data (policies, vehicle values, fraud indicators) for tool lookups; it is supplementary, not a replacement for the claims database. Additional tool groups: Document, Vision.
 
 ## Core Architectural Patterns
@@ -92,7 +94,7 @@ See [Crews](crews.md) for detailed crew documentation.
 After classification but before workflow execution:
 - An **escalation check** evaluates if the claim needs human review
 - Claims flagged for escalation are marked `needs_review` and bypass automated processing
-- Escalation criteria: fraud indicators, high-value payouts, low confidence scores
+- Escalation criteria: fraud indicators, high-value payouts, low confidence scores, ambiguous duplicate similarity (e.g. similarity in a gray band where merge vs. separate claim is unclear)
 
 ```mermaid
 flowchart LR
@@ -108,11 +110,11 @@ See [Agent Flow - Escalation](agent-flow.md#4-escalation-check-hitl) for details
 
 ### Data Flow
 
-Claim data flows through the system as follows. The Router Crew receives a `ClaimInput` (from `models/claim.py`) and classifies the claim; it passes the validated claim data and classification to the selected workflow crew. Within each crew, context is shared between tasks (see Agent Composition below for details on the context mechanism). Persistent state (claim records, workflow runs) is stored in the configured SQL database via the repository layer. The final output is a `ClaimOutput` (or `EscalationOutput` for escalated claims) containing `claim_id`, `status`, `actions_taken`, and optional `payout_amount`.
+Claim data flows through the system as follows. The Router Crew receives **sanitized claim JSON** validated against the `ClaimInput` schema (`models/claim.py`) and classifies the claim; it passes that data and classification to the selected workflow crew. Within each crew, context is shared between tasks (see Agent Composition below for details on the context mechanism). Persistent state (claim records, workflow runs) is stored in the configured SQL database via the repository layer. Successful completion yields a **`ClaimOutput`** with `claim_id`, `status`, `actions_taken`, optional `payout_amount`, and liability fields when populated. Escalated paths return **`EscalationOutput`**: `claim_id`, `needs_review`, `escalation_reasons`, `priority`, `recommended_action`, and `fraud_indicators` (`actions_taken` is on `ClaimOutput` only, not on `EscalationOutput`).
 
 ```mermaid
 flowchart LR
-    ClaimInput[ClaimInput] --> Router[Router Crew]
+    ClaimIn[Sanitized JSON · ClaimInput schema] --> Router[Router Crew]
     Router --> Crew[Workflow Crew]
     Crew --> Repo[Repository]
     Repo --> DB[(SQL DB)]
@@ -213,6 +215,8 @@ flowchart TB
     S3 --> ClaimResult
 ```
 
+The high-level diagram above starts at the Router; see the **Orchestration note** under System Components for **pre-router** stages (coverage, economics, fraud prescreening, duplicates) and **post–workflow crew** stages (tasks, rental, liability, settlement chain, after-action).
+
 ## Directory Structure
 
 ```tree
@@ -237,6 +241,7 @@ src/claim_agent/
 ├── agents/              # Agent factory functions
 ├── chat/                # Chat agent for conversational claimant UX (distinct from the `/portal` self-service SPA)
 ├── compliance/          # UCSPA and regulatory compliance (deadlines, etc.)
+├── privacy/             # Cross-border transfer and DPA-related helpers
 ├── crews/               # Crew definitions
 ├── data/                # Data loaders
 ├── diary/               # Diary/calendar system (auto-create, escalation)
@@ -272,9 +277,9 @@ src/claim_agent/
 
 The React + Vite app under `frontend/` is not a single product surface:
 
-- **Adjuster / operator UI** — Routes under the main layout (`/`, `/claims`, workbench, docs, skills, etc.) use authenticated internal APIs (`/api/claims` and related), same pattern as the observability dashboard.
-- **Claimant self-service** — Routes `/portal/login`, `/portal/claims`, and `/portal/claims/:claimId` (`frontend/src/pages/Portal*.tsx`) talk to **`/api/portal/*`**, implemented in `src/claim_agent/api/routes/portal.py`, with claimant verification (access token, policy+VIN, or email depending on configuration). This is the real policyholder-facing flow.
-- **Role simulation** — `/simulate` (`frontend/src/pages/Simulation.tsx`) switches among `frontend/src/pages/simulation/*` (customer, repair shop, third party). Those views reuse dashboard-style data hooks (e.g. `useClaims`); they are **simulation-only** and do **not** use portal verification or `/api/portal/*`.
+- **Adjuster / operator UI** — Routes under the main layout (`/`, `/claims`, workbench, docs, skills, etc.) use authenticated internal APIs (`/api/v1/claims` and related), same pattern as the observability dashboard.
+- **Claimant self-service** — Routes `/portal/login`, `/portal/claims`, and `/portal/claims/:claimId` (`frontend/src/pages/Portal*.tsx`) talk to **`/api/v1/portal/*`**, implemented in `src/claim_agent/api/routes/portal.py`, with claimant verification (access token, policy+VIN, or email depending on configuration). This is the real policyholder-facing flow.
+- **Role simulation** — `/simulate` (`frontend/src/pages/Simulation.tsx`) switches among `frontend/src/pages/simulation/*` (customer, repair shop, third party). Those views reuse dashboard-style data hooks (e.g. `useClaims`); they are **simulation-only** and do **not** use portal verification or `/api/v1/portal/*`.
 
 For API contract coverage of the portal, see [`tests/test_portal_api.py`](../tests/test_portal_api.py). A concise route table lives in the [README](../README.md#portal-vs-simulation).
 
@@ -291,7 +296,7 @@ For API contract coverage of the portal, see [`tests/test_portal_api.py`](../tes
 | CLI | Typer | `main.py` |
 | MCP Server | FastMCP | [MCP Server](mcp-server.md) |
 | External Integrations | Adapter Pattern | [Adapters](adapters.md) |
-| Observability & portals UI | React + Vite | This section; [README](../README.md#observability-ui-dashboard) |
+| Observability & portals UI | React + Vite | This section; [README](../README.md#frontend-dashboard--adjuster-workbench) |
 
 ## Key Design Decisions
 
